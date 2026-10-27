@@ -1,0 +1,26 @@
+{
+  "name": "@documind/shared",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Contracts (Zod schemas and inferred types) shared by the DocuMind API and web app.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "~6.0",
+    "vitest": "^5.0.5"
+  }
+}
