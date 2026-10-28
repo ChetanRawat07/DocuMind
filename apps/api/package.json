@@ -1,0 +1,35 @@
+{
+  "name": "@documind/api",
+  "private": true,
+  "version": "0.0.0",
+  "description": "DocuMind NestJS application: HTTP API (main.ts) and background worker (worker.ts) entrypoints.",
+  "type": "commonjs",
+  "scripts": {
+    "prebuild": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "npm run build && concurrently -k -n tsc,http,worker -c gray,blue,green \"tsc -p tsconfig.build.json --watch --preserveWatchOutput\" \"node --watch --env-file-if-exists=../../.env dist/main.js\" \"node --watch --env-file-if-exists=../../.env dist/worker.js\"",
+    "start": "node dist/main.js",
+    "start:worker": "node dist/worker.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@documind/shared": "^0.0.0",
+    "@nestjs/common": "^12.2.0",
+    "@nestjs/core": "^12.2.0",
+    "@nestjs/platform-express": "^12.2.0",
+    "helmet": "^8.3.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "^12.2.0",
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.19.2",
+    "@types/supertest": "^7.2.1",
+    "supertest": "^7.3.1",
+    "typescript": "~6.0",
+    "vitest": "^5.0.5"
+  }
+}
