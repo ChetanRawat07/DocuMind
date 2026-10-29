@@ -5,6 +5,7 @@ import { apiErrorResponseSchema, healthResponseSchema } from '@documind/shared';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module.js';
+import { Public } from '../src/auth/public.decorator.js';
 import { loadConfig } from '../src/config/app-config.js';
 import { configureHttpApp } from '../src/http/configure-http-app.js';
 
@@ -15,6 +16,7 @@ const UNREACHABLE_DATABASE_URL = 'postgres://user:password@127.0.0.1:1/documind'
 const INTERNAL_DETAIL = 'db password=hunter2 at 10.0.0.5';
 
 /** Test-only route that fails the way an unexpected bug would. */
+@Public()
 @Controller('test-failure')
 class FailingController {
   @Get()
@@ -31,6 +33,7 @@ describe('HTTP application', () => {
       NODE_ENV: 'test',
       CORS_ALLOWED_ORIGINS: ALLOWED_ORIGIN,
       DATABASE_URL: UNREACHABLE_DATABASE_URL,
+      SUPABASE_URL: 'https://abcdefghijklmnopqrst.supabase.co',
     });
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule.register(config)],

@@ -11,6 +11,7 @@ describe('Worker application context', () => {
       WORKER_POLL_INTERVAL_MS: '60000',
       // The pool connects lazily and the skeleton worker never queries.
       DATABASE_URL: 'postgres://user:password@127.0.0.1:1/documind',
+      SUPABASE_URL: 'https://abcdefghijklmnopqrst.supabase.co',
     });
     // A compiled TestingModule is itself a Nest application context, like the one worker.ts creates.
     const app = await Test.createTestingModule({

@@ -17,6 +17,15 @@ const isPostgresUrl = (value: string): boolean => {
   }
 };
 
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+/** https everywhere; plain http only for a local Supabase CLI stack. */
+const isSupabaseOrigin = (value: string): boolean => {
+  if (!isBareOrigin(value)) return false;
+  const { protocol, hostname } = new URL(value);
+  return protocol === 'https:' || (protocol === 'http:' && LOOPBACK_HOSTS.has(hostname));
+};
+
 const isBareOrigin = (value: string): boolean => {
   try {
     return new URL(value).origin === value;
@@ -56,6 +65,9 @@ const envSchema = z.object({
   }),
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(50).default(10),
   DATABASE_STATEMENT_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300_000).default(30_000),
+  SUPABASE_URL: z.string().refine(isSupabaseOrigin, {
+    message: 'Must be https://<project>.supabase.co (http is allowed only for localhost)',
+  }),
 });
 
 export interface AppConfig {
@@ -76,6 +88,12 @@ export interface AppConfig {
     readonly url: string;
     readonly poolMax: number;
     readonly statementTimeoutMs: number;
+  };
+  readonly auth: {
+    /** Expected `iss` claim of Supabase access tokens. */
+    readonly issuer: string;
+    /** Public keys that sign access tokens. */
+    readonly jwksUrl: URL;
   };
 }
 
@@ -100,6 +118,11 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
   }
 
   const parsed = result.data;
+  if (parsed.NODE_ENV === 'production' && !parsed.SUPABASE_URL.startsWith('https://')) {
+    throw new ConfigValidationError(['SUPABASE_URL: Must use https in production']);
+  }
+
+  const issuer = `${parsed.SUPABASE_URL}/auth/v1`;
   return {
     nodeEnv: parsed.NODE_ENV,
     log: { level: parsed.LOG_LEVEL, format: parsed.LOG_FORMAT },
@@ -110,5 +133,6 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
       poolMax: parsed.DATABASE_POOL_MAX,
       statementTimeoutMs: parsed.DATABASE_STATEMENT_TIMEOUT_MS,
     },
+    auth: { issuer, jwksUrl: new URL(`${issuer}/.well-known/jwks.json`) },
   };
 }

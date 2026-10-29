@@ -1,9 +1,12 @@
 import type { HealthResponse } from '@documind/shared';
 import { Controller, Get, Header, Inject, ServiceUnavailableException } from '@nestjs/common';
 import { sql } from 'kysely';
+import { Public } from '../auth/public.decorator.js';
 import { DATABASE } from '../database/database.module.js';
 import type { DatabaseExecutor } from '../database/database.types.js';
 
+/** Public: platform probes call these without credentials. */
+@Public()
 @Controller('health')
 export class HealthController {
   constructor(@Inject(DATABASE) private readonly db: DatabaseExecutor) {}

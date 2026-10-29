@@ -20,9 +20,20 @@ export function configureHttpApp(app: INestApplication, config: AppConfig): void
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
   });
   app.use(rejectOutsideApiPrefix);
+  app.use(preventCaching);
   app.setGlobalPrefix(API_PREFIX);
   app.useGlobalFilters(new AllExceptionsFilter(app.get(HttpAdapterHost)));
   app.enableShutdownHooks();
+}
+
+/**
+ * API responses are per-user and may carry personal data, so no browser or
+ * intermediary cache may store them. A route that is safe to cache can
+ * override the header explicitly.
+ */
+function preventCaching(_request: Request, response: Response, next: NextFunction): void {
+  response.setHeader('Cache-Control', 'no-store');
+  next();
 }
 
 /**
