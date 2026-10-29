@@ -1,18 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { ConfigValidationError, loadConfig } from './app-config.js';
 
+const DATABASE_URL = 'postgres://app:secret-password@db.example.test:5432/documind';
+const REQUIRED = { DATABASE_URL };
+
 describe('loadConfig', () => {
   it('applies safe defaults when optional variables are absent', () => {
-    expect(loadConfig({})).toEqual({
+    expect(loadConfig(REQUIRED)).toEqual({
       nodeEnv: 'development',
       log: { level: 'log', format: 'json' },
       http: { port: 3000, corsAllowedOrigins: [] },
       worker: { pollIntervalMs: 5000 },
+      database: { url: DATABASE_URL, poolMax: 10, statementTimeoutMs: 30_000 },
     });
   });
 
   it('coerces numeric variables and splits the CORS origin list', () => {
     const config = loadConfig({
+      ...REQUIRED,
       NODE_ENV: 'production',
       PORT: '8080',
       CORS_ALLOWED_ORIGINS: ' https://documind.pages.dev , http://localhost:5173 ',
@@ -33,14 +38,18 @@ describe('loadConfig', () => {
     ['PORT', 'abc'],
     ['NODE_ENV', 'staging'],
     ['WORKER_POLL_INTERVAL_MS', '10'],
+    ['DATABASE_POOL_MAX', '0'],
+    ['DATABASE_STATEMENT_TIMEOUT_MS', '500'],
   ])('rejects %s=%s', (name, value) => {
-    expect(() => loadConfig({ [name]: value })).toThrow(ConfigValidationError);
+    expect(() => loadConfig({ ...REQUIRED, [name]: value })).toThrow(ConfigValidationError);
   });
 
   it.each(['*', 'https://documind.pages.dev/', 'https://documind.pages.dev/app', 'not a url'])(
     'rejects CORS origin %j that is not a bare origin',
     (origin) => {
-      expect(() => loadConfig({ CORS_ALLOWED_ORIGINS: origin })).toThrow(ConfigValidationError);
+      expect(() => loadConfig({ ...REQUIRED, CORS_ALLOWED_ORIGINS: origin })).toThrow(
+        ConfigValidationError,
+      );
     },
   );
 
@@ -49,7 +58,7 @@ describe('loadConfig', () => {
 
     let error: unknown;
     try {
-      loadConfig({ LOG_LEVEL: secretLookingValue });
+      loadConfig({ ...REQUIRED, LOG_LEVEL: secretLookingValue });
     } catch (caught) {
       error = caught;
     }
@@ -58,5 +67,31 @@ describe('loadConfig', () => {
     const message = (error as ConfigValidationError).message;
     expect(message).toContain('LOG_LEVEL');
     expect(message).not.toContain(secretLookingValue);
+  });
+
+  it('requires DATABASE_URL', () => {
+    expect(() => loadConfig({})).toThrow(/DATABASE_URL/);
+  });
+
+  it.each([
+    'mysql://app:pw@db.example.test/documind',
+    'postgres://app:pw@db.example.test',
+    'not a url',
+  ])('rejects DATABASE_URL %j', (url) => {
+    expect(() => loadConfig({ DATABASE_URL: url })).toThrow(ConfigValidationError);
+  });
+
+  it('never echoes the database password in validation errors', () => {
+    const url = 'mysql://app:hunter2-database-password@db.example.test/documind';
+
+    let message = '';
+    try {
+      loadConfig({ DATABASE_URL: url });
+    } catch (error) {
+      message = (error as ConfigValidationError).message;
+    }
+
+    expect(message).toContain('DATABASE_URL');
+    expect(message).not.toContain('hunter2');
   });
 });

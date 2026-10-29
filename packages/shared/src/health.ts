@@ -1,8 +1,8 @@
 import { z } from 'zod';
 
 /**
- * Liveness response. Intentionally minimal: an unauthenticated endpoint must not
- * disclose versions, hostnames or dependency details.
+ * Liveness and readiness response. Intentionally minimal: an unauthenticated
+ * endpoint must not disclose versions, hostnames or which dependency is down.
  */
 export const healthResponseSchema = z.object({
   status: z.literal('ok'),

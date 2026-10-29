@@ -4,6 +4,19 @@ import { z } from 'zod';
 export const LOG_LEVELS = ['verbose', 'debug', 'log', 'warn', 'error', 'fatal'] as const;
 export type LogLevel = (typeof LOG_LEVELS)[number];
 
+const isPostgresUrl = (value: string): boolean => {
+  try {
+    const { protocol, hostname, pathname } = new URL(value);
+    return (
+      (protocol === 'postgres:' || protocol === 'postgresql:') &&
+      hostname.length > 0 &&
+      pathname.length > 1
+    );
+  } catch {
+    return false;
+  }
+};
+
 const isBareOrigin = (value: string): boolean => {
   try {
     return new URL(value).origin === value;
@@ -38,6 +51,11 @@ const envSchema = z.object({
       ),
     ),
   WORKER_POLL_INTERVAL_MS: z.coerce.number().int().min(100).max(60_000).default(5000),
+  DATABASE_URL: z.string().refine(isPostgresUrl, {
+    message: 'Must be a postgres:// or postgresql:// URL including host and database name',
+  }),
+  DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(50).default(10),
+  DATABASE_STATEMENT_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300_000).default(30_000),
 });
 
 export interface AppConfig {
@@ -52,6 +70,12 @@ export interface AppConfig {
   };
   readonly worker: {
     readonly pollIntervalMs: number;
+  };
+  readonly database: {
+    /** Contains credentials: never log it. */
+    readonly url: string;
+    readonly poolMax: number;
+    readonly statementTimeoutMs: number;
   };
 }
 
@@ -81,5 +105,10 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
     log: { level: parsed.LOG_LEVEL, format: parsed.LOG_FORMAT },
     http: { port: parsed.PORT, corsAllowedOrigins: parsed.CORS_ALLOWED_ORIGINS },
     worker: { pollIntervalMs: parsed.WORKER_POLL_INTERVAL_MS },
+    database: {
+      url: parsed.DATABASE_URL,
+      poolMax: parsed.DATABASE_POOL_MAX,
+      statementTimeoutMs: parsed.DATABASE_STATEMENT_TIMEOUT_MS,
+    },
   };
 }

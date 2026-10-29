@@ -11,7 +11,13 @@
     "start": "node dist/main.js",
     "start:worker": "node dist/worker.js",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:migrate": "npm run build && node --env-file-if-exists=../../.env dist/database/migrate.js latest",
+    "db:rollback": "npm run build && node --env-file-if-exists=../../.env dist/database/migrate.js down",
+    "db:reset": "npm run build && node --env-file-if-exists=../../.env dist/database/migrate.js reset",
+    "db:seed": "npm run build && node --env-file-if-exists=../../.env dist/database/seed.js",
+    "db:codegen": "kysely-codegen --env-file ../../.env --dialect postgres --exclude-pattern \"kysely_*\" --out-file src/database/generated/database.ts",
+    "db:codegen:check": "kysely-codegen --env-file ../../.env --dialect postgres --exclude-pattern \"kysely_*\" --out-file src/database/generated/database.ts --verify"
   },
   "dependencies": {
     "@documind/shared": "^0.0.0",
@@ -19,6 +25,8 @@
     "@nestjs/core": "^12.2.0",
     "@nestjs/platform-express": "^12.2.0",
     "helmet": "^8.3.0",
+    "kysely": "^0.29.7",
+    "pg": "^8.23.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "zod": "^4.6.7"
@@ -27,7 +35,9 @@
     "@nestjs/testing": "^12.2.0",
     "@types/express": "^5.0.6",
     "@types/node": "^24.19.2",
+    "@types/pg": "^8.23.1",
     "@types/supertest": "^7.2.1",
+    "kysely-codegen": "^0.20.0",
     "supertest": "^7.3.1",
     "typescript": "~6.0",
     "vitest": "^5.0.5"

@@ -9,6 +9,9 @@ import { loadConfig } from '../src/config/app-config.js';
 import { configureHttpApp } from '../src/http/configure-http-app.js';
 
 const ALLOWED_ORIGIN = 'http://localhost:5173';
+// Nothing listens on port 1, so every database query fails fast. This suite
+// covers HTTP behavior that must work without a database.
+const UNREACHABLE_DATABASE_URL = 'postgres://user:password@127.0.0.1:1/documind';
 const INTERNAL_DETAIL = 'db password=hunter2 at 10.0.0.5';
 
 /** Test-only route that fails the way an unexpected bug would. */
@@ -24,7 +27,11 @@ describe('HTTP application', () => {
   let app: INestApplication<Server>;
 
   beforeAll(async () => {
-    const config = loadConfig({ NODE_ENV: 'test', CORS_ALLOWED_ORIGINS: ALLOWED_ORIGIN });
+    const config = loadConfig({
+      NODE_ENV: 'test',
+      CORS_ALLOWED_ORIGINS: ALLOWED_ORIGIN,
+      DATABASE_URL: UNREACHABLE_DATABASE_URL,
+    });
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule.register(config)],
       controllers: [FailingController],
@@ -53,6 +60,20 @@ describe('HTTP application', () => {
       expect(response.headers['x-content-type-options']).toBe('nosniff');
       expect(response.headers['content-security-policy']).toBeDefined();
       expect(response.headers['x-powered-by']).toBeUndefined();
+    });
+  });
+
+  describe('GET /api/v1/health/ready', () => {
+    it('reports 503 without details when the database is unreachable', async () => {
+      const response = await request(app.getHttpServer()).get('/api/v1/health/ready').expect(503);
+
+      const body = apiErrorResponseSchema.parse(response.body);
+      expect(body.error.code).toBe('SERVICE_UNAVAILABLE');
+      expect(JSON.stringify(body)).not.toMatch(/database|ECONNREFUSED|127\.0\.0\.1/i);
+    });
+
+    it('keeps liveness healthy while the database is down', async () => {
+      await request(app.getHttpServer()).get('/api/v1/health').expect(200);
     });
   });
 
