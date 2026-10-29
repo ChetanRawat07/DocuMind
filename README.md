@@ -11,16 +11,19 @@ LLM, validates them against schemas and flags low-confidence results for human r
 ## Status
 
 Built in phases (see `DocuMind_Interview_Ready_Development_Plan.md`).
-**Phase 0 (project foundation) is complete.** The following exist today:
+**Phases 0 (foundation) and 1 (database and data model) are complete.** The following exist today:
 
-- NestJS API process with a liveness endpoint, security headers, CORS allow-list and a consistent
-  error format.
+- NestJS API process with liveness and readiness endpoints, security headers, CORS allow-list and
+  a consistent error format.
+- PostgreSQL schema (users, documents, processing jobs, extractions, audit logs) with migrations,
+  constraints that enforce ownership, idempotency and job-state invariants, generated row types,
+  repositories, a development seed and database integration tests.
 - Worker process skeleton with a graceful-shutdown poll loop (no job processing yet).
 - Shared Zod contracts used by both API and web.
 - React + Vite + Tailwind placeholder page that checks API health.
 - Local PostgreSQL via Docker Compose, validated configuration, linting, formatting and tests.
 
-Not built yet: database schema, authentication, uploads, storage, OCR, AI extraction, job
+Not built yet: authentication, uploads, storage, OCR, AI extraction, job
 processing, review workflow, analytics and the product UI.
 
 ## Architecture
@@ -30,6 +33,7 @@ both system of record and job queue, and object storage for files. See:
 
 - [Architecture overview](docs/architecture/overview.md)
 - [Architecture decision records](docs/adr/README.md)
+- [Database schema](docs/database/schema.md)
 
 ## Tech stack
 
@@ -38,8 +42,9 @@ both system of record and job queue, and object storage for files. See:
 | Frontend       | React 19, Vite 8, Tailwind CSS 4, TypeScript   | Scaffolded                     |
 | Backend        | NestJS 12 (Express), TypeScript                | Scaffolded                     |
 | Contracts      | Zod 4 (`packages/shared`)                      | In use                         |
-| Database       | PostgreSQL 17 (Docker locally, Supabase later) | Running locally; no schema yet |
-| Job queue      | PostgreSQL (`FOR UPDATE SKIP LOCKED`)          | Planned, Phase 9               |
+| Database       | PostgreSQL 17 (Docker locally, Supabase later) | Schema and migrations in place |
+| Data access    | Kysely, `pg`, kysely-codegen                   | In use                         |
+| Job queue      | PostgreSQL (`FOR UPDATE SKIP LOCKED`)          | Schema ready; logic in Phase 9 |
 | Object storage | Cloudflare R2                                  | Planned, Phase 4               |
 | OCR            | Tesseract                                      | Planned, Phase 6               |
 | AI             | Ollama (local), Cloudflare Workers AI (demo)   | Planned, Phase 7               |
@@ -57,6 +62,7 @@ packages/
 docs/
   architecture/   System overview
   adr/            Architecture decision records
+  database/       Schema, ERD, query patterns, indexes
 docker-compose.yml  Local infrastructure (PostgreSQL)
 ```
 
@@ -68,55 +74,79 @@ docker-compose.yml  Local infrastructure (PostgreSQL)
 cp .env.example .env     # local defaults; edit if ports clash
 npm install
 npm run infra:up         # start PostgreSQL and wait until it is healthy
+npm run db:migrate       # apply database migrations
+npm run db:seed          # optional: demo user and documents
 npm run dev              # shared (watch) + API + worker + web
 ```
 
 Then open <http://localhost:5173>. The page shows "API online" when the web app can reach the API
-through the Vite proxy. The API's liveness endpoint is <http://localhost:3000/api/v1/health>.
+through the Vite proxy. The API's liveness endpoint is <http://localhost:3000/api/v1/health>, and
+its readiness endpoint (which checks the database) is <http://localhost:3000/api/v1/health/ready>.
 
 Stop infrastructure with `npm run infra:down` (data persists in the `postgres-data` volume; add
 `-v` to `docker compose down` to delete it).
 
 ### Scripts (repository root)
 
-| Script               | What it does                                               |
-| -------------------- | ---------------------------------------------------------- |
-| `npm run dev`        | Builds shared, then runs shared watch, API, worker and web |
-| `npm run build`      | Production build of all packages                           |
-| `npm run check`      | Format check, lint, typecheck and all tests                |
-| `npm test`           | All tests                                                  |
-| `npm run lint`       | ESLint                                                     |
-| `npm run format`     | Prettier write                                             |
-| `npm run typecheck`  | TypeScript in every package                                |
-| `npm run infra:up`   | Start local PostgreSQL and wait for healthy                |
-| `npm run infra:down` | Stop local infrastructure                                  |
+| Script                     | What it does                                               |
+| -------------------------- | ---------------------------------------------------------- |
+| `npm run dev`              | Builds shared, then runs shared watch, API, worker and web |
+| `npm run build`            | Production build of all packages                           |
+| `npm run check`            | Format check, lint, typecheck and all tests                |
+| `npm test`                 | All tests (database tests need `npm run infra:up`)         |
+| `npm run lint`             | ESLint                                                     |
+| `npm run format`           | Prettier write                                             |
+| `npm run typecheck`        | TypeScript in every package                                |
+| `npm run infra:up`         | Start local PostgreSQL and wait for healthy                |
+| `npm run infra:down`       | Stop local infrastructure                                  |
+| `npm run db:migrate`       | Apply pending migrations                                   |
+| `npm run db:rollback`      | Revert the most recent migration                           |
+| `npm run db:reset`         | Revert all migrations (refused in production)              |
+| `npm run db:seed`          | Insert demo data (idempotent; refused in production)       |
+| `npm run db:codegen`       | Regenerate row types from the migrated database            |
+| `npm run db:codegen:check` | Fail if generated row types differ from the database       |
 
 Run a single process with `npm run start -w @documind/api` (API) or
 `npm run start:worker -w @documind/api` (worker) after `npm run build`.
+
+### Tests
+
+API tests are split into two Vitest projects:
+
+- `unit`: no external services.
+- `integration`: runs against `TEST_DATABASE_URL`. The suite **drops and recreates** that database
+  on every run and refuses any database name that does not end in `_test`.
+
+Run one project with `npx vitest run --project unit` (or `integration`) inside `apps/api`.
 
 ## Environment variables
 
 Validated at startup by `apps/api/src/config/app-config.ts`; an invalid value stops the process
 with a message naming the variable.
 
-| Variable                  | Default       | Used by            | Description                                                        |
-| ------------------------- | ------------- | ------------------ | ------------------------------------------------------------------ |
-| `NODE_ENV`                | `development` | API, worker        | `development`, `test` or `production`                              |
-| `LOG_LEVEL`               | `log`         | API, worker        | Minimum level: `verbose`, `debug`, `log`, `warn`, `error`, `fatal` |
-| `LOG_FORMAT`              | `json`        | API, worker        | `json` (structured) or `pretty` (local)                            |
-| `PORT`                    | `3000`        | API, web dev proxy | HTTP port of the API                                               |
-| `CORS_ALLOWED_ORIGINS`    | empty         | API                | Comma-separated bare origins; empty disables cross-origin access   |
-| `WORKER_POLL_INTERVAL_MS` | `5000`        | Worker             | Wait after an empty poll (100–60000)                               |
-| `POSTGRES_USER`           | none          | Docker Compose     | Local database user (required by Compose)                          |
-| `POSTGRES_PASSWORD`       | none          | Docker Compose     | Local database password (required by Compose)                      |
-| `POSTGRES_DB`             | none          | Docker Compose     | Local database name (required by Compose)                          |
-| `POSTGRES_PORT`           | `5432`        | Docker Compose     | Host port, bound to 127.0.0.1                                      |
+| Variable                        | Default         | Used by            | Description                                                         |
+| ------------------------------- | --------------- | ------------------ | ------------------------------------------------------------------- |
+| `NODE_ENV`                      | `development`   | API, worker        | `development`, `test` or `production`                               |
+| `LOG_LEVEL`                     | `log`           | API, worker        | Minimum level: `verbose`, `debug`, `log`, `warn`, `error`, `fatal`  |
+| `LOG_FORMAT`                    | `json`          | API, worker        | `json` (structured) or `pretty` (local)                             |
+| `PORT`                          | `3000`          | API, web dev proxy | HTTP port of the API                                                |
+| `CORS_ALLOWED_ORIGINS`          | empty           | API                | Comma-separated bare origins; empty disables cross-origin access    |
+| `WORKER_POLL_INTERVAL_MS`       | `5000`          | Worker             | Wait after an empty poll (100–60000)                                |
+| `DATABASE_URL`                  | none (required) | API, worker, CLIs  | `postgres://` URL of the application database; contains credentials |
+| `DATABASE_POOL_MAX`             | `10`            | API, worker        | Connections per process (1–50)                                      |
+| `DATABASE_STATEMENT_TIMEOUT_MS` | `30000`         | API, worker        | Server-side limit per statement (1000–300000)                       |
+| `TEST_DATABASE_URL`             | none            | Integration tests  | Database recreated by the test suite; name must end in `_test`      |
+| `POSTGRES_USER`                 | none            | Docker Compose     | Local database user (required by Compose)                           |
+| `POSTGRES_PASSWORD`             | none            | Docker Compose     | Local database password (required by Compose)                       |
+| `POSTGRES_DB`                   | none            | Docker Compose     | Local database name (required by Compose)                           |
+| `POSTGRES_PORT`                 | `5432`          | Docker Compose     | Host port, bound to 127.0.0.1                                       |
 
 ## API
 
-| Method | Path             | Auth | Description                                 |
-| ------ | ---------------- | ---- | ------------------------------------------- |
-| GET    | `/api/v1/health` | None | Liveness: `{ "status": "ok", "timestamp" }` |
+| Method | Path                   | Auth | Description                                                   |
+| ------ | ---------------------- | ---- | ------------------------------------------------------------- |
+| GET    | `/api/v1/health`       | None | Liveness: `{ "status": "ok", "timestamp" }`                   |
+| GET    | `/api/v1/health/ready` | None | Readiness: same body when the database answers; 503 otherwise |
 
 All errors use `{ "error": { "code": "<HTTP_STATUS_NAME>", "message": "…" } }`. Server errors
 never include internal details.
@@ -129,6 +159,9 @@ never include internal details.
 - **Web page says "API unreachable"**: check the API process output in `npm run dev`. The proxy
   targets `localhost:$PORT`.
 - **`Failed to start: Invalid environment configuration`**: the message lists each invalid variable.
+- **`Failed to start: listen EADDRINUSE`**: another process uses `PORT`; change it in `.env`.
+- **`TEST_DATABASE_URL is not set`**: add it to `.env` (see `.env.example`).
+- **Readiness returns 503**: the API cannot reach `DATABASE_URL`; the API log has the cause.
 
 ## Contributing
 

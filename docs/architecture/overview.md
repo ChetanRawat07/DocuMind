@@ -3,12 +3,15 @@
 This document describes the architecture **as implemented** and marks planned parts explicitly.
 Decisions and their reasoning live in [the ADRs](../adr/README.md).
 
-## Current state: Phase 0 (foundation)
+## Current state: Phase 1 (database and data model)
 
-Implemented: repository structure, the API process with a liveness endpoint, the worker process
-skeleton, shared contracts, local PostgreSQL, configuration validation, linting, formatting and
-tests. Not yet implemented: database schema, authentication, uploads, storage, OCR, AI, job
-processing, and the product UI.
+Implemented: repository structure, the API process with liveness and readiness endpoints, the
+worker process skeleton, shared contracts, configuration validation, the PostgreSQL schema with
+migrations, generated row types, repositories for every table, a development seed, linting,
+formatting, unit tests and database integration tests. Not yet implemented: authentication,
+uploads, storage, OCR, AI, job processing, and the product UI.
+
+The schema, its constraints and indexes are documented in [database/schema.md](../database/schema.md).
 
 ## Runtime view
 
@@ -25,14 +28,15 @@ processing, and the product UI.
      │ API process  (main.ts)       │        │ Worker process (worker.ts)   │
      │ NestJS HTTP app: AppModule   │        │ Nest app context: WorkerModule│
      │  • helmet, CORS, error filter│        │  • poll loop (skeleton)       │
-     │  • /api/v1/health            │        │  • graceful SIGTERM shutdown  │
+     │  • /api/v1/health[/ready]    │        │  • graceful SIGTERM shutdown  │
      └──────────────┬───────────────┘        └──────────────┬───────────────┘
-                    │        same codebase: apps/api         │
+                    │  same codebase and repositories (ADR-001)│
+                    │  each process: own pg pool (Kysely)      │
                     └──────────────────┬─────────────────────┘
                                        ▼
                          ┌──────────────────────────┐
                          │ PostgreSQL 17            │  system of record + job queue
-                         │ (Docker locally;         │  (schema: Phase 1, queue: Phase 9)
+                         │ (Docker locally;         │  (schema: Phase 1, queue logic: Phase 9)
                          │  Supabase in demo)       │
                          └──────────────────────────┘
 
@@ -49,22 +53,32 @@ already keeps the two separate so either topology works.
 apps/api/src
 ├── main.ts                  HTTP entrypoint
 ├── worker.ts                Worker entrypoint
-├── app.module.ts            Root module for HTTP: config + HTTP-facing modules
+├── app.module.ts            Root module for HTTP: shared feature modules + HTTP-facing modules
+├── shared-feature-modules.ts  Feature modules imported by both root modules
 ├── config/                  Environment schema (Zod) and the global APP_CONFIG provider
+├── database/                Kysely instance (DATABASE provider), migrations, migrate/seed CLIs,
+│                            generated row types
+├── users/ documents/ jobs/ extraction/ audit/
+│                            Feature modules; today each holds its repository
 ├── common/                  Cross-cutting code usable by both processes
 │   ├── bootstrap/           Startup failure handling
 │   ├── filters/             HTTP exception → shared error envelope
 │   └── logging/             Logger factory (JSON or pretty)
 ├── http/                    HTTP-only setup: helmet, CORS, prefix, filters, 404 handling
-├── health/                  Liveness endpoint
+├── health/                  Liveness and readiness endpoints
 └── worker/                  Worker-only: WorkerModule, WorkerService, PollingLoop
 
 apps/web/src                 Phase 0 placeholder that checks API health
 packages/shared/src          Zod schemas + types shared by API and web
 ```
 
-Rule: feature modules added in later phases (documents, jobs, storage and so on) must not depend on
-`http/` or on Express, so the worker can import them without inheriting HTTP concerns.
+Rules:
+
+- Feature modules must not depend on `http/` or on Express, so the worker can import them without
+  inheriting HTTP concerns.
+- Only repositories touch Kysely. They take an optional executor so callers can group several calls
+  in one transaction, and they return camelCase domain objects, never raw rows.
+- Every repository read or delete of a user-owned resource filters by owner id in SQL.
 
 ## Key flows
 
@@ -74,7 +88,10 @@ Rule: feature modules added in later phases (documents, jobs, storage and so on)
    variables are invalid (never their values) and exits with code 1.
 2. The logger is created from config: JSON lines when `LOG_FORMAT=json`, readable output otherwise.
 3. Nest boots the process's root module. The validated config is injected as `APP_CONFIG`.
-4. Shutdown hooks are enabled, so SIGTERM/SIGINT run `onApplicationShutdown` handlers.
+4. Shutdown hooks are enabled. On SIGTERM/SIGINT Nest runs, in order: `beforeApplicationShutdown`
+   (the worker stops polling and finishes its in-flight tick), closes the HTTP server (in-flight
+   requests finish), then `onApplicationShutdown` (the database pool closes). This order means no
+   running work loses its database connection mid-flight.
 
 ### HTTP request
 
@@ -88,6 +105,13 @@ are rejected as 404 → body parsing → controller → any thrown exception is 
 
 4xx messages are returned as-is. 5xx responses always carry a generic message, and the details are
 logged server-side only.
+
+### Health probes
+
+- `GET /api/v1/health` (liveness) checks nothing external, so a database outage does not make the
+  platform restart a healthy process.
+- `GET /api/v1/health/ready` (readiness) runs `SELECT 1`. On failure it returns 503 in the standard
+  error envelope; the cause is logged, not returned.
 
 ### Worker loop
 

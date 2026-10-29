@@ -20,5 +20,6 @@ schedules for later phases.
 | [009](009-zero-cost-deployment.md)             | Zero-cost deployment architecture               | Accepted | Phase 0    |
 | 010                                            | Document retention strategy                     | Planned  | Later      |
 | [011](011-monorepo-and-toolchain.md)           | Monorepo layout and toolchain                   | Accepted | Phase 0    |
+| [012](012-kysely-and-sql-migrations.md)        | Kysely with hand-written SQL migrations         | Accepted | Phase 1    |
 
 New ADRs use [template.md](template.md).
