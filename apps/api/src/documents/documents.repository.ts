@@ -1,11 +1,9 @@
-import type { DocumentStatus, DocumentType } from '@documind/shared';
+import { type DocumentStatus, type DocumentType, MAX_DOCUMENT_PAGE_SIZE } from '@documind/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import type { Selectable } from 'kysely';
 import { DATABASE } from '../database/database.module.js';
 import type { DatabaseExecutor } from '../database/database.types.js';
 import type { Documents } from '../database/generated/database.js';
-
-export const MAX_DOCUMENT_PAGE_SIZE = 100;
 
 export interface Document {
   readonly id: string;
