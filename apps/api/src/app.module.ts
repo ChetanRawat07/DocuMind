@@ -3,8 +3,10 @@ import { AuthModule } from './auth/auth.module.js';
 import type { AppConfig } from './config/app-config.js';
 import { AppConfigModule } from './config/app-config.module.js';
 import { DatabaseModule } from './database/database.module.js';
+import { DocumentsHttpModule } from './documents/documents-http.module.js';
 import { HealthModule } from './health/health.module.js';
 import { SHARED_FEATURE_MODULES } from './shared-feature-modules.js';
+import { UsersHttpModule } from './users/users-http.module.js';
 
 /**
  * Root module of the HTTP API process: shared feature modules plus HTTP-facing
@@ -22,6 +24,8 @@ export class AppModule {
         ...SHARED_FEATURE_MODULES,
         AuthModule,
         HealthModule,
+        UsersHttpModule,
+        DocumentsHttpModule,
       ],
     };
   }
