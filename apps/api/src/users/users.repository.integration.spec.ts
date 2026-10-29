@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { expectPgError, PG } from '../../test/support/postgres-errors.js';
 import { createTestDatabase, truncateAllTables } from '../../test/support/test-database.js';
 import type { DatabaseExecutor } from '../database/database.types.js';
 import { UsersRepository } from './users.repository.js';
@@ -25,30 +24,34 @@ describe('UsersRepository', () => {
   it('creates a user from an identity on first sight', async () => {
     const id = randomUUID();
 
-    const user = await users.upsertFromIdentity({
-      id,
-      email: 'ada@example.test',
-      displayName: 'Ada',
-    });
+    const user = await users.createIfAbsent({ id, email: 'ada@example.test', displayName: 'Ada' });
 
     expect(user).toMatchObject({ id, email: 'ada@example.test', displayName: 'Ada' });
     expect(await users.findById(id)).toEqual(user);
   });
 
-  it('syncs email and display name on later sign-ins without creating a duplicate', async () => {
+  it('returns null instead of overwriting an existing user', async () => {
     const id = randomUUID();
-    await users.upsertFromIdentity({ id, email: 'ada@example.test', displayName: null });
+    await users.createIfAbsent({ id, email: 'ada@example.test', displayName: null });
 
-    const updated = await users.upsertFromIdentity({
+    const second = await users.createIfAbsent({
       id,
-      email: 'ada.lovelace@example.test',
-      displayName: 'Ada Lovelace',
+      email: 'other@example.test',
+      displayName: null,
     });
 
-    expect(updated).toMatchObject({
-      email: 'ada.lovelace@example.test',
-      displayName: 'Ada Lovelace',
-    });
+    expect(second).toBeNull();
+    expect((await users.findById(id))?.email).toBe('ada@example.test');
+  });
+
+  it('creates exactly one row under concurrent first requests', async () => {
+    const identity = { id: randomUUID(), email: 'ada@example.test', displayName: null };
+
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () => users.createIfAbsent(identity)),
+    );
+
+    expect(results.filter((user) => user !== null)).toHaveLength(1);
     const count = await db
       .selectFrom('users')
       .select((eb) => eb.fn.countAll<string>().as('count'))
@@ -56,27 +59,27 @@ describe('UsersRepository', () => {
     expect(count.count).toBe('1');
   });
 
-  it('handles concurrent first sign-ins for the same identity', async () => {
-    const identity = { id: randomUUID(), email: 'ada@example.test', displayName: null };
+  it('updates email and display name from the identity provider', async () => {
+    const id = randomUUID();
+    await users.createIfAbsent({ id, email: 'ada@example.test', displayName: null });
 
-    const results = await Promise.all(
-      Array.from({ length: 5 }, () => users.upsertFromIdentity(identity)),
-    );
-
-    expect(new Set(results.map((user) => user.id))).toEqual(new Set([identity.id]));
-  });
-
-  it('rejects an email already used by a different identity', async () => {
-    await users.upsertFromIdentity({
-      id: randomUUID(),
-      email: 'ada@example.test',
-      displayName: null,
+    const updated = await users.updateProfile({
+      id,
+      email: 'ada.lovelace@example.test',
+      displayName: 'Ada Lovelace',
     });
 
-    await expectPgError(
-      users.upsertFromIdentity({ id: randomUUID(), email: 'ADA@example.test', displayName: null }),
-      { code: PG.uniqueViolation, constraint: 'users_email_lower_key' },
-    );
+    expect(updated).toMatchObject({
+      id,
+      email: 'ada.lovelace@example.test',
+      displayName: 'Ada Lovelace',
+    });
+  });
+
+  it('returns null when updating a user that does not exist', async () => {
+    expect(
+      await users.updateProfile({ id: randomUUID(), email: 'ada@example.test', displayName: null }),
+    ).toBeNull();
   });
 
   it('returns null for an unknown user', async () => {

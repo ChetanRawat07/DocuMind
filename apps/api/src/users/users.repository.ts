@@ -25,23 +25,29 @@ export class UsersRepository {
   constructor(@Inject(DATABASE) private readonly db: DatabaseExecutor) {}
 
   /**
-   * Creates the user on first sight and keeps email/display name in sync with
-   * the identity provider afterwards. A single statement, so concurrent first
-   * requests for the same user cannot create duplicates.
+   * Inserts the user unless the id already exists. Returns the new user, or
+   * null when the row was already there, including when a concurrent request
+   * inserted it first (ON CONFLICT waits for that transaction, then skips).
    */
-  async upsertFromIdentity(identity: UserIdentity, executor = this.db): Promise<User> {
+  async createIfAbsent(identity: UserIdentity, executor = this.db): Promise<User | null> {
     const row = await executor
       .insertInto('users')
       .values({ id: identity.id, email: identity.email, display_name: identity.displayName })
-      .onConflict((conflict) =>
-        conflict.column('id').doUpdateSet((eb) => ({
-          email: eb.ref('excluded.email'),
-          display_name: eb.ref('excluded.display_name'),
-        })),
-      )
+      .onConflict((conflict) => conflict.column('id').doNothing())
       .returningAll()
-      .executeTakeFirstOrThrow();
-    return toUser(row);
+      .executeTakeFirst();
+    return row ? toUser(row) : null;
+  }
+
+  /** Copies email and display name from the identity provider. Returns null if the user does not exist. */
+  async updateProfile(identity: UserIdentity, executor = this.db): Promise<User | null> {
+    const row = await executor
+      .updateTable('users')
+      .set({ email: identity.email, display_name: identity.displayName })
+      .where('id', '=', identity.id)
+      .returningAll()
+      .executeTakeFirst();
+    return row ? toUser(row) : null;
   }
 
   async findById(id: string, executor = this.db): Promise<User | null> {

@@ -28,13 +28,12 @@ describe('schema constraints', () => {
   });
 
   describe('users', () => {
-    it('treats emails as case-insensitively unique', async () => {
-      await insertUser(db, { email: 'Ada@Example.test' });
+    // Identity is the Supabase user id. The lazily synced email can be stale,
+    // so two rows may briefly hold the same address (see migration 20261029140000).
+    it('allows the same email on different identities', async () => {
+      await insertUser(db, { email: 'ada@example.test' });
 
-      await expectPgError(insertUser(db, { email: 'ada@example.test' }), {
-        code: PG.uniqueViolation,
-        constraint: 'users_email_lower_key',
-      });
+      await expect(insertUser(db, { email: 'ADA@example.test' })).resolves.toBeDefined();
     });
 
     it('maintains updated_at on every update', async () => {
