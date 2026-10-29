@@ -3,31 +3,35 @@
 This document describes the architecture **as implemented** and marks planned parts explicitly.
 Decisions and their reasoning live in [the ADRs](../adr/README.md).
 
-## Current state: Phase 1 (database and data model)
+## Current state: Phase 2 (authentication and authorization)
 
 Implemented: repository structure, the API process with liveness and readiness endpoints, the
 worker process skeleton, shared contracts, configuration validation, the PostgreSQL schema with
-migrations, generated row types, repositories for every table, a development seed, linting,
-formatting, unit tests and database integration tests. Not yet implemented: authentication,
-uploads, storage, OCR, AI, job processing, and the product UI.
+migrations, repositories for every table, a development seed, Supabase Auth integration (sign-up,
+sign-in, sign-out, password reset in the web app; token verification, a global auth guard and user
+provisioning in the API), read-only document endpoints with ownership enforcement, and unit,
+integration and component tests. Not yet implemented: uploads, storage, OCR, AI, job processing,
+and the product UI.
 
-The schema, its constraints and indexes are documented in [database/schema.md](../database/schema.md).
+- Schema, constraints and indexes: [database/schema.md](../database/schema.md)
+- Authentication and authorization: [security/authentication.md](../security/authentication.md)
 
 ## Runtime view
 
 ```text
-                 Browser
-                    │
+                 Browser ─────────────────────────────▶ Supabase Auth
+                    │                     sign-in/up, refresh, reset (supabase-js)
                     ▼
      ┌──────────────────────────────┐
      │ apps/web (React + Vite)      │   dev: Vite server proxies /api → API
      └──────────────┬───────────────┘   demo: Cloudflare Pages (Phase 16)
-                    │ HTTPS /api/v1/*
+                    │ HTTPS /api/v1/*  Authorization: Bearer <access token>
                     ▼
      ┌──────────────────────────────┐        ┌──────────────────────────────┐
      │ API process  (main.ts)       │        │ Worker process (worker.ts)   │
      │ NestJS HTTP app: AppModule   │        │ Nest app context: WorkerModule│
-     │  • helmet, CORS, error filter│        │  • poll loop (skeleton)       │
+     │  • helmet, CORS, error filter│
+     │  • global auth guard (JWKS)  │        │  • poll loop (skeleton)       │
      │  • /api/v1/health[/ready]    │        │  • graceful SIGTERM shutdown  │
      └──────────────┬───────────────┘        └──────────────┬───────────────┘
                     │  same codebase and repositories (ADR-001)│
@@ -54,21 +58,29 @@ apps/api/src
 ├── main.ts                  HTTP entrypoint
 ├── worker.ts                Worker entrypoint
 ├── app.module.ts            Root module for HTTP: shared feature modules + HTTP-facing modules
+├── auth/                    HTTP-only: token verifier, global AuthGuard, @Public(), @CurrentUser(),
+│                            user provisioning
 ├── shared-feature-modules.ts  Feature modules imported by both root modules
 ├── config/                  Environment schema (Zod) and the global APP_CONFIG provider
 ├── database/                Kysely instance (DATABASE provider), migrations, migrate/seed CLIs,
 │                            generated row types
 ├── users/ documents/ jobs/ extraction/ audit/
-│                            Feature modules; today each holds its repository
+│                            Feature modules; each holds its repository. `*-http.module.ts`
+│                            files hold controllers and are imported by AppModule only
 ├── common/                  Cross-cutting code usable by both processes
 │   ├── bootstrap/           Startup failure handling
 │   ├── filters/             HTTP exception → shared error envelope
+│   ├── pipes/               Zod validation pipe for request input
 │   └── logging/             Logger factory (JSON or pretty)
 ├── http/                    HTTP-only setup: helmet, CORS, prefix, filters, 404 handling
 ├── health/                  Liveness and readiness endpoints
 └── worker/                  Worker-only: WorkerModule, WorkerService, PollingLoop
 
-apps/web/src                 Phase 0 placeholder that checks API health
+apps/web/src
+├── auth/                    Supabase client, AuthProvider, useAuth, RequireAuth, safe redirects
+├── pages/                   Login, sign-up, forgot/reset password, signed-in home
+├── services/                API client (bearer token, refresh-once-on-401), health check
+└── components/              Minimal form and status components (restyled in Phase 3)
 packages/shared/src          Zod schemas + types shared by API and web
 ```
 
@@ -79,6 +91,9 @@ Rules:
 - Only repositories touch Kysely. They take an optional executor so callers can group several calls
   in one transaction, and they return camelCase domain objects, never raw rows.
 - Every repository read or delete of a user-owned resource filters by owner id in SQL.
+- Every route requires authentication unless marked `@Public()`. Controllers get the caller from
+  `@CurrentUser()` and pass its id to the repositories; they never check ownership after loading a
+  row.
 
 ## Key flows
 
@@ -96,7 +111,9 @@ Rules:
 ### HTTP request
 
 `helmet` security headers → CORS (allow-list from `CORS_ALLOWED_ORIGINS`) → paths outside `/api/v1`
-are rejected as 404 → body parsing → controller → any thrown exception is mapped by
+are rejected as 404 → `Cache-Control: no-store` → body parsing → global `AuthGuard` (verifies the
+bearer token, provisions the user; skipped for `@Public()` routes) → pipes (UUID, Zod) →
+controller → any thrown exception is mapped by
 `AllExceptionsFilter` to:
 
 ```json
@@ -125,6 +142,10 @@ tick does nothing; Phase 9 makes it claim and process one job.
 - All endpoints are under `/api/v1`.
 - Responses and request bodies are described by Zod schemas in `packages/shared`.
 - Errors use the envelope above; error `code` is the HTTP status name.
+- Authentication: `Authorization: Bearer <Supabase access token>`; 401 with `WWW-Authenticate` when
+  missing or invalid, 503 when signing keys cannot be fetched.
+- Another user's resource and a nonexistent one both return 404 with the same body.
+- Lists use keyset pagination with an opaque `cursor` and `limit` (default 20, max 100).
 
 ## Configuration
 

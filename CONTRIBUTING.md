@@ -39,6 +39,11 @@ npm audit
   has run anywhere other than your machine; add a new one. Commit regenerated row types with it.
 - **Database access** goes through repositories. Reads and deletes of user-owned data filter by
   owner id in SQL.
+- **Authentication** is on by default for every route. `@Public()` needs a reason in a comment and
+  a reviewer's agreement. Controllers take the caller from `@CurrentUser()` and pass its id to the
+  repositories. Validate path ids (`ParseUUIDPipe`) and query/body input (shared Zod schemas).
+- **Never log** access or refresh tokens, `Authorization` headers, passwords or document contents.
+- **`VITE_*` variables are public**: they are bundled into the web app. Never put a secret in one.
 - **Dependencies:** add one only with a clear reason; check `npm audit` afterwards. Install scripts
   are reviewed via `npm install-scripts ls`.
 - **Architecture changes** that affect other phases get an ADR in `docs/adr/`.

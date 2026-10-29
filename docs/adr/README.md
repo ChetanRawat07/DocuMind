@@ -21,5 +21,6 @@ schedules for later phases.
 | 010                                            | Document retention strategy                     | Planned  | Later      |
 | [011](011-monorepo-and-toolchain.md)           | Monorepo layout and toolchain                   | Accepted | Phase 0    |
 | [012](012-kysely-and-sql-migrations.md)        | Kysely with hand-written SQL migrations         | Accepted | Phase 1    |
+| [013](013-supabase-auth-bearer-jwks.md)        | Supabase Auth, bearer tokens verified via JWKS  | Accepted | Phase 2    |
 
 New ADRs use [template.md](template.md).

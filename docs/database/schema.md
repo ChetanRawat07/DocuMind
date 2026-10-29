@@ -20,7 +20,7 @@ erDiagram
 
     users {
         uuid id PK "Supabase Auth user id"
-        text email "unique on lower(email)"
+        text email "synced from Supabase"
         text display_name
         timestamptz created_at
         timestamptz updated_at
@@ -98,17 +98,23 @@ erDiagram
 ### users
 
 **Why it exists.** Documents and audit entries need a local owner to reference. Identity itself
-(passwords, sessions, verification) belongs to Supabase Auth (decision for Phase 2), so this table
+(passwords, sessions, verification) belongs to Supabase Auth (ADR-013), so this table
 stores no credentials. `id` is the Supabase user id (JWT `sub`) and therefore has no default.
 There is deliberately no foreign key into Supabase's `auth` schema, so local Docker databases and
 tests work without Supabase.
 
-**Queries.** Upsert on sign-in (`INSERT … ON CONFLICT (id) DO UPDATE`), lookup by primary key.
+**Queries.** Lookup by primary key on every authenticated request; on first sight
+`INSERT … ON CONFLICT (id) DO NOTHING`; `UPDATE` of email/display name only when Supabase reports
+a change, so an unchanged user costs one read and no write.
 
-**Indexes.** Primary key; unique index on `lower(email)` (case-insensitive uniqueness).
+**Indexes.** Primary key only. Email is deliberately not unique: the row is a lazily synced copy
+of the Supabase identity and can hold a stale email after an email change or account deletion,
+which must not block a legitimate new user (migration `20261029140000_users_email_not_unique`;
+see [authentication](../security/authentication.md#user-provisioning)).
 
-**Concurrency.** Two first requests for the same new user both run the single upsert statement;
-Postgres serializes them on the primary key, so no duplicate is possible (tested).
+**Concurrency.** Two first requests for the same new user both run the insert; the second waits on
+the primary key, then skips. Exactly one row and one `user.registered` audit entry result (tested
+over HTTP with 8 concurrent requests).
 
 **Retention.** Account deletion must first delete the user's documents and stored objects
 (`ON DELETE RESTRICT` from `documents` enforces the order). Audit entries keep the user id.
@@ -258,6 +264,7 @@ await db.transaction().execute(async (trx) => {
 | Create document + enqueue job (4, 9)                                  | Yes          | Both or neither. This is what removes the dual-write problem (ADR-005). Tested with a forced rollback. |
 | Store extraction + mark job succeeded + update document status (8, 9) | Yes          | A crash in between must not leave a succeeded job without its extraction, or the reverse.              |
 | Single-statement upserts and deletes                                  | No           | One statement is already atomic.                                                                       |
+| Provision user + `user.registered` audit entry (2)                    | Yes          | The audit trail must record every account the system created, and only those.                          |
 | Readiness check                                                       | No           | Read-only `SELECT 1`.                                                                                  |
 
 Isolation level: Postgres's default `READ COMMITTED`. The invariants above rely on unique
