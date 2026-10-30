@@ -103,7 +103,7 @@ export class DocumentsController {
   ): Promise<DocumentListResponse> {
     let after;
     if (query.cursor !== undefined) {
-      after = decodeDocumentCursor(query.cursor);
+      after = decodeDocumentCursor(query.sort, query.cursor);
       if (!after) {
         throw new BadRequestException('cursor: Invalid cursor');
       }
@@ -111,11 +111,18 @@ export class DocumentsController {
 
     const page = await this.documents.listForOwner(user.id, {
       limit: query.limit,
+      sort: query.sort,
+      filters: {
+        ...(query.q !== undefined ? { search: query.q } : {}),
+        ...(query.status !== undefined ? { status: query.status } : {}),
+        ...(query.type !== undefined ? { type: query.type } : {}),
+        ...(query.format !== undefined ? { format: query.format } : {}),
+      },
       ...(after ? { after } : {}),
     });
     return {
       items: page.items.map(toDocumentDto),
-      nextCursor: page.nextCursor ? encodeDocumentCursor(page.nextCursor) : null,
+      nextCursor: page.nextCursor ? encodeDocumentCursor(query.sort, page.nextCursor) : null,
     };
   }
 

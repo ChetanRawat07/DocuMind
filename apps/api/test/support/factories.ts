@@ -1,4 +1,10 @@
 import { randomUUID } from 'node:crypto';
+import {
+  type DocumentStatus,
+  type DocumentType,
+  PROCESSED_DOCUMENT_STATUSES,
+  type UploadMimeType,
+} from '@documind/shared';
 import type { DatabaseExecutor } from '../../src/database/database.types.js';
 
 /** Minimal valid rows for tests. Overrides are spread last so a test controls what it asserts on. */
@@ -16,18 +22,33 @@ export async function insertUser(
 export async function insertDocument(
   db: DatabaseExecutor,
   ownerId: string,
-  overrides: { id?: string; createdAt?: Date } = {},
+  overrides: {
+    id?: string;
+    createdAt?: Date;
+    originalFilename?: string;
+    mimeType?: UploadMimeType;
+    sizeBytes?: number;
+    status?: DocumentStatus;
+    documentType?: DocumentType | null;
+  } = {},
 ): Promise<{ id: string }> {
   const id = overrides.id ?? randomUUID();
+  const status = overrides.status ?? 'uploaded';
   await db
     .insertInto('documents')
     .values({
       id,
       user_id: ownerId,
-      original_filename: 'sample.pdf',
-      mime_type: 'application/pdf',
-      size_bytes: 1024,
+      original_filename: overrides.originalFilename ?? 'sample.pdf',
+      mime_type: overrides.mimeType ?? 'application/pdf',
+      size_bytes: overrides.sizeBytes ?? 1024,
       storage_key: `documents/${ownerId}/2026/${id}/original.pdf`,
+      status,
+      document_type: overrides.documentType ?? null,
+      // The schema requires processed_at exactly when processing reached an outcome.
+      processed_at: (PROCESSED_DOCUMENT_STATUSES as readonly string[]).includes(status)
+        ? new Date()
+        : null,
       ...(overrides.createdAt ? { created_at: overrides.createdAt } : {}),
     })
     .execute();

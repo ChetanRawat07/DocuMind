@@ -293,7 +293,7 @@ describe('authentication and authorization (HTTP)', () => {
     it("cannot reach another user's documents with a crafted cursor", async () => {
       await insertDocument(db, alice.id);
       const cursor = Buffer.from(
-        JSON.stringify({ createdAt: '2999-01-01T00:00:00.000Z', id: randomUUID() }),
+        JSON.stringify({ sort: 'newest', value: '2999-01-01T00:00:00.000Z', id: randomUUID() }),
       ).toString('base64url');
 
       const response = await http()

@@ -1,6 +1,14 @@
-import { type DocumentStatus, type DocumentType, MAX_DOCUMENT_PAGE_SIZE } from '@documind/shared';
+import {
+  DOCUMENT_FORMATS,
+  type DocumentFormat,
+  type DocumentSort,
+  type DocumentStatus,
+  type DocumentType,
+  MAX_DOCUMENT_PAGE_SIZE,
+  UNCLASSIFIED_DOCUMENT_TYPE,
+} from '@documind/shared';
 import { Inject, Injectable } from '@nestjs/common';
-import type { Selectable } from 'kysely';
+import { type RawBuilder, type Selectable, sql } from 'kysely';
 import { DATABASE } from '../database/database.module.js';
 import type { DatabaseExecutor } from '../database/database.types.js';
 import type { Documents } from '../database/generated/database.js';
@@ -29,10 +37,35 @@ export interface NewDocument {
   readonly storageKey: string;
 }
 
-/** Position after the last item of a page; documents are ordered newest first. */
+export type DocumentSortColumn = 'created_at' | 'original_filename' | 'size_bytes';
+
+export interface DocumentSortSpec {
+  readonly column: DocumentSortColumn;
+  readonly direction: 'asc' | 'desc';
+}
+
+/** Each sort orders by one column, then by id so equal values still have a fixed order. */
+export const DOCUMENT_SORT_SPECS: Record<DocumentSort, DocumentSortSpec> = {
+  newest: { column: 'created_at', direction: 'desc' },
+  oldest: { column: 'created_at', direction: 'asc' },
+  name_asc: { column: 'original_filename', direction: 'asc' },
+  name_desc: { column: 'original_filename', direction: 'desc' },
+  largest: { column: 'size_bytes', direction: 'desc' },
+  smallest: { column: 'size_bytes', direction: 'asc' },
+};
+
+/** Position after the last item of a page: its sort column value and id. */
 export interface DocumentPageCursor {
-  readonly createdAt: Date;
+  readonly value: Date | string | number;
   readonly id: string;
+}
+
+export interface DocumentListFilters {
+  /** Part of the filename, matched ignoring case. */
+  readonly search?: string;
+  readonly status?: DocumentStatus;
+  readonly type?: DocumentType | typeof UNCLASSIFIED_DOCUMENT_TYPE;
+  readonly format?: DocumentFormat;
 }
 
 export interface DocumentPage {
@@ -79,32 +112,59 @@ export class DocumentsRepository {
   }
 
   /**
-   * Keyset pagination, newest first. `WHERE (created_at, id) < cursor` walks
-   * the (user_id, created_at DESC, id DESC) index directly, so page 1000 costs
-   * the same as page 1, and rows inserted meanwhile never shift page borders
-   * the way OFFSET does. The id tiebreaker handles equal timestamps.
+   * Keyset pagination in any supported order. `WHERE (sort_value, id) > cursor`
+   * (or `<` for descending) continues right after the last row seen, so rows
+   * inserted meanwhile never shift page borders the way OFFSET does, and the
+   * id tiebreaker handles equal values. The newest and oldest orders walk the
+   * (user_id, created_at DESC, id DESC) index, forwards or backwards. Name
+   * and size orders sort the owner's matching rows, which is cheap at
+   * per-user volumes; they get an index when measurements call for one.
    */
   async listForOwner(
     ownerId: string,
-    page: { readonly limit: number; readonly after?: DocumentPageCursor },
+    page: {
+      readonly limit: number;
+      readonly sort: DocumentSort;
+      readonly filters?: DocumentListFilters;
+      readonly after?: DocumentPageCursor;
+    },
     executor = this.db,
   ): Promise<DocumentPage> {
     if (!Number.isInteger(page.limit) || page.limit < 1 || page.limit > MAX_DOCUMENT_PAGE_SIZE) {
       throw new RangeError(`limit must be an integer between 1 and ${MAX_DOCUMENT_PAGE_SIZE}`);
     }
+    const spec = DOCUMENT_SORT_SPECS[page.sort];
+    const sortValue = sortExpression(spec.column);
+    const { search, status, type, format } = page.filters ?? {};
 
     let query = executor.selectFrom('documents').selectAll().where('user_id', '=', ownerId);
+    if (search) {
+      query = query.where('original_filename', 'ilike', `%${escapeLikePattern(search)}%`);
+    }
+    if (status) {
+      query = query.where('status', '=', status);
+    }
+    if (type === UNCLASSIFIED_DOCUMENT_TYPE) {
+      query = query.where('document_type', 'is', null);
+    } else if (type) {
+      query = query.where('document_type', '=', type);
+    }
+    if (format) {
+      query = query.where('mime_type', 'in', DOCUMENT_FORMATS[format]);
+    }
     const { after } = page;
     if (after) {
-      query = query.where((eb) =>
-        eb(eb.refTuple('created_at', 'id'), '<', eb.tuple(after.createdAt, after.id)),
+      // The operator comes from a fixed table, never from input; values are bound parameters.
+      const operator = sql.raw(spec.direction === 'desc' ? '<' : '>');
+      query = query.where(
+        sql<boolean>`(${sortValue}, id) ${operator} (${after.value}, ${after.id})`,
       );
     }
 
     // Fetch one extra row to learn whether another page exists.
     const rows = await query
-      .orderBy('created_at', 'desc')
-      .orderBy('id', 'desc')
+      .orderBy(sortValue, spec.direction)
+      .orderBy('id', spec.direction)
       .limit(page.limit + 1)
       .execute();
 
@@ -113,7 +173,7 @@ export class DocumentsRepository {
     const hasMore = rows.length > page.limit;
     return {
       items,
-      nextCursor: hasMore && last ? { createdAt: last.createdAt, id: last.id } : null,
+      nextCursor: hasMore && last ? { value: sortValueOf(last, spec.column), id: last.id } : null,
     };
   }
 
@@ -135,6 +195,34 @@ export class DocumentsRepository {
       .executeTakeFirst();
     return row ? toDocument(row) : null;
   }
+}
+
+/**
+ * Names sort with the ICU root collation: natural, case-insensitive-first
+ * order ("alpha", "Beta", "Éclair", "zeta") that is the same on every server.
+ * The database default depends on the host's C library: Alpine images sort
+ * by byte, putting every capital letter before "a".
+ */
+function sortExpression(column: DocumentSortColumn): RawBuilder<unknown> {
+  return column === 'original_filename'
+    ? sql`original_filename COLLATE "und-x-icu"`
+    : sql.ref(column);
+}
+
+function sortValueOf(document: Document, column: DocumentSortColumn): Date | string | number {
+  switch (column) {
+    case 'created_at':
+      return document.createdAt;
+    case 'original_filename':
+      return document.originalFilename;
+    case 'size_bytes':
+      return document.sizeBytes;
+  }
+}
+
+/** Makes `%`, `_` and backslash match literally in a LIKE pattern (backslash is the default escape). */
+export function escapeLikePattern(text: string): string {
+  return text.replace(/[\\%_]/g, (character) => `\\${character}`);
 }
 
 function toDocument(row: Selectable<Documents>): Document {
