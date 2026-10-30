@@ -4,6 +4,7 @@ import { AppShell } from './layout/app-shell';
 import { NAV_ITEMS } from './layout/navigation';
 import { ComingSoonPage } from './pages/coming-soon-page';
 import { DashboardPage } from './pages/dashboard-page';
+import { DocumentDetailPage } from './pages/document-detail-page';
 import { DocumentsPage } from './pages/documents-page';
 import { ForgotPasswordPage } from './pages/forgot-password-page';
 import { LoginPage } from './pages/login-page';
@@ -32,6 +33,7 @@ export function App() {
       >
         <Route index element={<DashboardPage />} />
         <Route path={NAV_ITEMS.documents.path} element={<DocumentsPage />} />
+        <Route path={`${NAV_ITEMS.documents.path}/:documentId`} element={<DocumentDetailPage />} />
         <Route
           path={NAV_ITEMS.processing.path}
           element={<ComingSoonPage item={NAV_ITEMS.processing} />}

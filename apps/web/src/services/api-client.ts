@@ -43,6 +43,8 @@ export interface ApiClient {
     schema: TSchema,
     options?: UploadOptions,
   ): Promise<z.output<TSchema>>;
+  /** Fetches a binary response, such as a document file. */
+  getBlob(path: string, options?: { signal?: AbortSignal }): Promise<Blob>;
   delete(path: string): Promise<void>;
 }
 
@@ -66,9 +68,9 @@ export function createApiClient(auth: AuthClient): ApiClient {
     throw new SessionExpiredError();
   }
 
-  async function withSession(
-    perform: (token: string) => Promise<RawResponse>,
-  ): Promise<RawResponse> {
+  async function withSession<TResponse extends RawResponse>(
+    perform: (token: string) => Promise<TResponse>,
+  ): Promise<TResponse> {
     const { data } = await auth.getSession();
     if (!data.session) {
       return endSession();
@@ -109,6 +111,16 @@ export function createApiClient(auth: AuthClient): ApiClient {
         return sendWithProgress(`${API_BASE_PATH}${path}`, token, body, options);
       });
       return schema.parse(await response.json());
+    },
+
+    async getBlob(path, options = {}) {
+      const response = await withSession((token) =>
+        fetch(`${API_BASE_PATH}${path}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          ...(options.signal ? { signal: options.signal } : {}),
+        }),
+      );
+      return response.blob();
     },
 
     async delete(path) {

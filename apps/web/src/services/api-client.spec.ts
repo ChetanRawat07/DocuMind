@@ -251,3 +251,39 @@ describe('delete', () => {
     });
   });
 });
+
+describe('getBlob', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('fetches a binary body with the token', async () => {
+    const { client } = createFakeAuthClient(fakeSession('token-1'));
+    const fetchMock = stubFetch(
+      new Response('%PDF-1.7', {
+        headers: { 'Content-Type': 'application/pdf' },
+      }),
+    );
+
+    const blob = await createApiClient(client).getBlob('/documents/abc/content');
+
+    expect(await blob.text()).toBe('%PDF-1.7');
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/v1/documents/abc/content');
+    expect(authorizationOf(fetchMock, 0)).toBe('Bearer token-1');
+  });
+
+  it('throws ApiError with the error envelope for a failed request', async () => {
+    const { client } = createFakeAuthClient(fakeSession());
+    stubFetch(
+      Response.json(
+        { error: { code: 'NOT_FOUND', message: 'Document not found' } },
+        { status: 404 },
+      ),
+    );
+
+    await expect(createApiClient(client).getBlob('/documents/abc/content')).rejects.toMatchObject({
+      status: 404,
+      message: 'Document not found',
+    });
+  });
+});

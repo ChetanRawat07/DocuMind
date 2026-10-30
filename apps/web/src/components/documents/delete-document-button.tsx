@@ -15,9 +15,12 @@ type DeleteState = 'idle' | 'confirming' | 'deleting' | 'failed';
 export function DeleteDocumentButton({
   document,
   onDeleted,
+  showLabel = false,
 }: {
   document: DocumentDto;
   onDeleted: (id: string) => void;
+  /** A labeled secondary button instead of an icon, for page-level actions. */
+  showLabel?: boolean;
 }) {
   const api = useApi();
   const [state, setState] = useState<DeleteState>('idle');
@@ -39,14 +42,15 @@ export function DeleteDocumentButton({
   if (state === 'idle') {
     return (
       <Button
-        variant="ghost"
-        size="sm"
+        variant={showLabel ? 'secondary' : 'ghost'}
+        size={showLabel ? 'md' : 'sm'}
         aria-label={`Delete ${document.originalFilename}`}
         onClick={() => {
           setState('confirming');
         }}
       >
         <Trash2 aria-hidden="true" className="size-4" />
+        {showLabel ? 'Delete' : null}
       </Button>
     );
   }

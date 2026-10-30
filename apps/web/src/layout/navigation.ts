@@ -76,8 +76,14 @@ export const NAV_SECTIONS: readonly NavSection[] = [
   { label: 'Insights', items: [NAV_ITEMS.analytics, NAV_ITEMS.auditLogs] },
 ];
 
-/** Breadcrumb trail for a path: section then page, or just the page for Settings. */
+/**
+ * Breadcrumb trail for a path: section then page, or just the page for
+ * Settings. A document's page sits under Documents.
+ */
 export function breadcrumbFor(pathname: string): readonly string[] {
+  if (pathname.startsWith(`${NAV_ITEMS.documents.path}/`)) {
+    return [...breadcrumbFor(NAV_ITEMS.documents.path), 'Details'];
+  }
   for (const section of NAV_SECTIONS) {
     const item = section.items.find((candidate) => candidate.path === pathname);
     if (item) return [section.label, item.label];

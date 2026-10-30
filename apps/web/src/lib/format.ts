@@ -24,6 +24,13 @@ export function formatDate(iso: string, locale?: string): string {
   return new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(new Date(iso));
 }
 
+/** "29 Oct 2026, 10:00". */
+export function formatDateTime(iso: string, locale?: string): string {
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(
+    new Date(iso),
+  );
+}
+
 /** Short badge text for a file icon: "PDF", "PNG"; "FILE" when there is no usable extension. */
 export function fileExtensionLabel(filename: string): string {
   const match = /\.([a-z0-9]{1,4})$/i.exec(filename);
