@@ -44,6 +44,9 @@ npm audit
   repositories. Validate path ids (`ParseUUIDPipe`) and query/body input (shared Zod schemas).
 - **Never log** access or refresh tokens, `Authorization` headers, passwords or document contents.
 - **`VITE_*` variables are public**: they are bundled into the web app. Never put a secret in one.
+- **Uploaded files are hostile input.** Never build a storage path from user input (use
+  `documentStorageKey`), never trust the client's MIME type, and never render or execute an upload
+  in the app's origin. Storage credentials stay in the API.
 - **Web UI** is built from the kit in `apps/web/src/components/ui` and the tokens in `index.css`
   (see [docs/frontend/ui-foundation.md](docs/frontend/ui-foundation.md)). Every data view handles
   loading, empty and error states; error text is fixed, never the server's message; metrics without

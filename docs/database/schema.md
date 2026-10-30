@@ -122,7 +122,8 @@ over HTTP with 8 concurrent requests).
 ### documents
 
 **Why it exists.** Metadata for an uploaded file. The bytes live in object storage under
-`storage_key` (ADR-003).
+`storage_key` (ADR-003), always `documents/{userId}/{year}/{documentId}/original.{ext}` (see
+[storage/document-uploads.md](../storage/document-uploads.md#storage-keys)).
 
 **Relationships.** Many per user. Deleting a user is blocked while documents exist (`RESTRICT`), so
 storage objects can never be orphaned by a cascading delete that storage does not know about.
@@ -293,7 +294,7 @@ queued contract, failed purchase order), their jobs and audit entries.
 
 - Idempotent: fixed ids with `ON CONFLICT DO NOTHING`.
 - Refused when `NODE_ENV=production`.
-- Synthetic: storage keys point at no real objects yet (Phase 4), and the demo user can only sign in
+- Synthetic: the seed's storage keys point at no real objects, and the demo user can only sign in
   once a Supabase user with the same id exists (Phase 2).
 
 Tests never use the seed; each test builds the rows it needs (`apps/api/test/support/factories.ts`).

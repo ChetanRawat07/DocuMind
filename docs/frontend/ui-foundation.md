@@ -122,6 +122,4 @@ manual screen-reader pass is still worth doing before a demo.
 - No dark mode (the plan specifies a light UI).
 - The bundle is not split by route (about 237 KB gzipped, mostly supabase-js and React); revisit in
   the performance phase.
-- The top bar has no Upload button yet; it arrives with uploads in Phase 4 rather than as a button
-  that does nothing.
 - Relative times ("5 minutes ago") are computed when the page opens and do not tick.

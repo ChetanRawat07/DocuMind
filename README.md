@@ -11,8 +11,8 @@ LLM, validates them against schemas and flags low-confidence results for human r
 ## Status
 
 Built in phases (see `DocuMind_Interview_Ready_Development_Plan.md`).
-**Phases 0 (foundation), 1 (database and data model), 2 (authentication and authorization) and 3
-(UI foundation) are complete.** The following exist today:
+**Phases 0 (foundation), 1 (database and data model), 2 (authentication and authorization), 3
+(UI foundation) and 4 (document upload and object storage) are complete.** The following exist today:
 
 - NestJS API process with liveness and readiness endpoints, security headers, CORS allow-list and
   a consistent error format.
@@ -31,8 +31,13 @@ Built in phases (see `DocuMind_Interview_Ready_Development_Plan.md`).
   empty and error states, with automated accessibility tests.
 - Local PostgreSQL via Docker Compose, validated configuration, linting, formatting and tests.
 
-Not built yet: uploads, storage, OCR, AI extraction, job processing, review workflow, analytics,
-and the document, processing, review, analytics and audit-log screens.
+- Document upload: drag-and-drop or file picker with a queue and per-file progress; the API checks
+  size, filename, extension and the file's actual bytes (PDF, PNG, JPEG up to 10 MB) before storing
+  it privately under a generated key (local folder in development, Cloudflare R2 in the demo).
+  Documents can be listed and deleted (row and file).
+
+Not built yet: OCR, AI extraction, job processing, review workflow, analytics, document
+search/filter/detail and download, and the processing, review, analytics and audit-log screens.
 
 ## Architecture
 
@@ -44,25 +49,26 @@ both system of record and job queue, and object storage for files. See:
 - [Database schema](docs/database/schema.md)
 - [Authentication and authorization](docs/security/authentication.md)
 - [UI foundation](docs/frontend/ui-foundation.md)
+- [Document uploads and storage](docs/storage/document-uploads.md)
 
 ## Tech stack
 
-| Area           | Technology                                     | Status                         |
-| -------------- | ---------------------------------------------- | ------------------------------ |
-| Frontend       | React 19, Vite 8, Tailwind CSS 4, TypeScript   | In use                         |
-| UI             | Hand-built kit, lucide-react icons, Inter      | In use                         |
-| Backend        | NestJS 12 (Express), TypeScript                | Scaffolded                     |
-| Contracts      | Zod 4 (`packages/shared`)                      | In use                         |
-| Database       | PostgreSQL 17 (Docker locally, Supabase later) | Schema and migrations in place |
-| Data access    | Kysely, `pg`, kysely-codegen                   | In use                         |
-| Auth           | Supabase Auth, supabase-js, `jose` (JWKS)      | In use                         |
-| Routing (web)  | React Router                                   | In use                         |
-| Job queue      | PostgreSQL (`FOR UPDATE SKIP LOCKED`)          | Schema ready; logic in Phase 9 |
-| Object storage | Cloudflare R2                                  | Planned, Phase 4               |
-| OCR            | Tesseract                                      | Planned, Phase 6               |
-| AI             | Ollama (local), Cloudflare Workers AI (demo)   | Planned, Phase 7               |
-| Tests          | Vitest, Supertest, Testing Library, axe-core   | In use                         |
-| Lint/format    | ESLint (typescript-eslint strict), Prettier    | In use                         |
+| Area           | Technology                                     | Status                           |
+| -------------- | ---------------------------------------------- | -------------------------------- |
+| Frontend       | React 19, Vite 8, Tailwind CSS 4, TypeScript   | In use                           |
+| UI             | Hand-built kit, lucide-react icons, Inter      | In use                           |
+| Backend        | NestJS 12 (Express), TypeScript                | Scaffolded                       |
+| Contracts      | Zod 4 (`packages/shared`)                      | In use                           |
+| Database       | PostgreSQL 17 (Docker locally, Supabase later) | Schema and migrations in place   |
+| Data access    | Kysely, `pg`, kysely-codegen                   | In use                           |
+| Auth           | Supabase Auth, supabase-js, `jose` (JWKS)      | In use                           |
+| Routing (web)  | React Router                                   | In use                           |
+| Job queue      | PostgreSQL (`FOR UPDATE SKIP LOCKED`)          | Schema ready; logic in Phase 9   |
+| Object storage | Local folder (dev), Cloudflare R2 (AWS SDK v3) | In use (R2 not yet smoke-tested) |
+| OCR            | Tesseract                                      | Planned, Phase 6                 |
+| AI             | Ollama (local), Cloudflare Workers AI (demo)   | Planned, Phase 7                 |
+| Tests          | Vitest, Supertest, Testing Library, axe-core   | In use                           |
+| Lint/format    | ESLint (typescript-eslint strict), Prettier    | In use                           |
 
 ## Repository layout
 
@@ -78,6 +84,7 @@ docs/
   database/       Schema, ERD, query patterns, indexes
   security/       Authentication and authorization
   frontend/       Design tokens, components, layout, accessibility
+  storage/        Upload validation, storage keys, consistency, R2 setup
 docker-compose.yml  Local infrastructure (PostgreSQL)
 ```
 
@@ -171,6 +178,13 @@ with a message naming the variable.
 | `SUPABASE_URL`                  | none (required) | API (validated in all processes) | Supabase project URL; https (http only for localhost outside production) |
 | `VITE_SUPABASE_URL`             | none (required) | Web (public)                     | Supabase project URL for the browser                                     |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | none (required) | Web (public)                     | Publishable/anon key; public by design                                   |
+| `STORAGE_DRIVER`                | `filesystem`    | API, worker                      | `filesystem` (dev/tests; refused in production) or `s3` (R2)             |
+| `STORAGE_FILESYSTEM_ROOT`       | `.data/storage` | API, worker                      | Folder for the filesystem driver, relative to the working directory      |
+| `S3_ENDPOINT`                   | none            | API, worker (`s3` driver)        | e.g. `https://<account-id>.r2.cloudflarestorage.com`; https required     |
+| `S3_REGION`                     | `auto`          | API, worker (`s3` driver)        | `auto` for R2                                                            |
+| `S3_BUCKET`                     | none            | API, worker (`s3` driver)        | Private bucket name                                                      |
+| `S3_ACCESS_KEY_ID`              | none            | API, worker (`s3` driver)        | R2 API token key id                                                      |
+| `S3_SECRET_ACCESS_KEY`          | none            | API, worker (`s3` driver)        | Secret; server-side only, never logged                                   |
 | `POSTGRES_USER`                 | none            | Docker Compose                   | Local database user (required by Compose)                                |
 | `POSTGRES_PASSWORD`             | none            | Docker Compose                   | Local database password (required by Compose)                            |
 | `POSTGRES_DB`                   | none            | Docker Compose                   | Local database name (required by Compose)                                |
@@ -178,13 +192,15 @@ with a message naming the variable.
 
 ## API
 
-| Method | Path                    | Auth   | Description                                                                        |
-| ------ | ----------------------- | ------ | ---------------------------------------------------------------------------------- |
-| GET    | `/api/v1/health`        | None   | Liveness: `{ "status": "ok", "timestamp" }`                                        |
-| GET    | `/api/v1/health/ready`  | None   | Readiness: same body when the database answers; 503 otherwise                      |
-| GET    | `/api/v1/me`            | Bearer | The signed-in user; creates the user record on first call                          |
-| GET    | `/api/v1/documents`     | Bearer | The caller's documents, newest first; `limit` (1–100, default 20), opaque `cursor` |
-| GET    | `/api/v1/documents/:id` | Bearer | One of the caller's documents; 404 for other users' and unknown ids                |
+| Method | Path                    | Auth   | Description                                                                                               |
+| ------ | ----------------------- | ------ | --------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/v1/health`        | None   | Liveness: `{ "status": "ok", "timestamp" }`                                                               |
+| GET    | `/api/v1/health/ready`  | None   | Readiness: same body when the database answers; 503 otherwise                                             |
+| GET    | `/api/v1/me`            | Bearer | The signed-in user; creates the user record on first call                                                 |
+| GET    | `/api/v1/documents`     | Bearer | The caller's documents, newest first; `limit` (1–100, default 20), opaque `cursor`                        |
+| GET    | `/api/v1/documents/:id` | Bearer | One of the caller's documents; 404 for other users' and unknown ids                                       |
+| POST   | `/api/v1/documents`     | Bearer | Multipart upload, one `file` part (PDF/PNG/JPEG ≤ 10 MB); 201 with the document; 413/415/400 on rejection |
+| DELETE | `/api/v1/documents/:id` | Bearer | Deletes the document and its file; 204, or 404 if it is not yours                                         |
 
 All errors use `{ "error": { "code": "<HTTP_STATUS_NAME>", "message": "…" } }`. Server errors
 never include internal details. Authenticated endpoints return 401 (with `WWW-Authenticate`) for a
@@ -203,6 +219,8 @@ missing, invalid or expired token, and 503 if Supabase's signing keys cannot be 
 - **Readiness returns 503**: the API cannot reach `DATABASE_URL`; the API log has the cause.
 - **Web app shows "Missing or invalid web configuration"**: set the `VITE_SUPABASE_*` variables in
   `.env` and restart `npm run dev`.
+- **Upload fails with 415 "not a valid PDF file"**: the file's bytes do not match its extension
+  (for example a renamed Word document). Re-export it as a real PDF, PNG or JPEG.
 - **Every API call returns 401 "Invalid access token" after signing in**: `SUPABASE_URL` does not
   match the project the web app signs in to, or the project still uses the legacy HS256 secret.
 - **API calls return 503 after signing in**: the API cannot fetch the JWKS; the API log names the

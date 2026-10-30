@@ -3,7 +3,7 @@
 This document describes the architecture **as implemented** and marks planned parts explicitly.
 Decisions and their reasoning live in [the ADRs](../adr/README.md).
 
-## Current state: Phase 3 (UI foundation)
+## Current state: Phase 4 (document upload and object storage)
 
 Implemented: repository structure, the API process with liveness and readiness endpoints, the
 worker process skeleton, shared contracts, configuration validation, the PostgreSQL schema with
@@ -11,12 +11,15 @@ migrations, repositories for every table, a development seed, Supabase Auth inte
 sign-in, sign-out, password reset in the web app; token verification, a global auth guard and user
 provisioning in the API), read-only document endpoints with ownership enforcement, the web app's product shell and component
 kit (dashboard, settings, placeholder pages for later sections), and unit, integration, component
-and accessibility tests. Not yet implemented: uploads, storage, OCR, AI, job processing, and the
-document, processing, review, analytics and audit-log screens.
+and accessibility tests, and document upload/delete with content validation and private object
+storage (filesystem adapter locally, S3-compatible adapter for R2). Not yet implemented: OCR, AI,
+job processing, document search/detail/download, and the processing, review, analytics and
+audit-log screens.
 
 - Schema, constraints and indexes: [database/schema.md](../database/schema.md)
 - Authentication and authorization: [security/authentication.md](../security/authentication.md)
 - Web UI (tokens, components, layout, accessibility): [frontend/ui-foundation.md](../frontend/ui-foundation.md)
+- Uploads, storage keys and storage/database consistency: [storage/document-uploads.md](../storage/document-uploads.md)
 
 ## Runtime view
 
@@ -46,7 +49,9 @@ document, processing, review, analytics and audit-log screens.
                          │  Supabase in demo)       │
                          └──────────────────────────┘
 
-  Planned: Cloudflare R2 (documents, Phase 4) · Tesseract OCR (Phase 6) ·
+  Object storage (ObjectStorage adapter): local folder in development, Cloudflare R2 in the demo;
+  only the API touches it, the browser never does.
+  Planned: Tesseract OCR (Phase 6) ·
            Ollama / Cloudflare Workers AI behind an AI provider interface (Phase 7)
 ```
 
