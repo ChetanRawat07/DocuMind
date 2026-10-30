@@ -139,14 +139,22 @@ is an outcome (`needs_review`, `completed`, `failed`), enforced by a `CHECK`.
 | ------------------------------------ | ------------------------------------------------------------------------------------------------ | ------------------------------------- | -------------------------------------------- |
 | Owner's list, newest first           | `WHERE user_id = $1 AND (created_at, id) < ($2, $3) ORDER BY created_at DESC, id DESC LIMIT n+1` | `documents_user_id_created_at_id_idx` | Index range scan, no sort; constant per page |
 | One document                         | `WHERE id = $1 AND user_id = $2`                                                                 | Primary key                           | One row                                      |
+| Owner's list, oldest first           | Same, `>` and `ORDER BY created_at, id`                                                          | `documents_user_id_created_at_id_idx` | Backward index scan, no sort                 |
+| Owner's list by name or size         | `WHERE user_id = $1 AND (sort_col, id) > ($2, $3) ORDER BY sort_col, id LIMIT n+1`               | Any `user_id`-prefixed index          | Sorts the owner's matching rows (no index)   |
+| Filename search                      | `… AND original_filename ILIKE '%term%'` (wildcards escaped)                                     | Any `user_id`-prefixed index          | Scans the owner's rows; trigram index later  |
 | Status filters/counts (Phases 5, 12) | `WHERE user_id = $1 AND status = $2`                                                             | `documents_user_id_status_idx`        | Index scan                                   |
 | Delete                               | `DELETE … WHERE id = $1 AND user_id = $2 RETURNING *`                                            | Primary key                           | One row + cascades                           |
 
 **Pagination.** Keyset (cursor) pagination rather than `OFFSET`: `OFFSET n` reads and discards
 `n` rows, so late pages get slower, and rows inserted between requests shift page boundaries
-(duplicates or gaps). The `(created_at, id)` row comparison uses the index directly (verified with
-`EXPLAIN`: the comparison appears as the index condition, with no sort). `id` breaks ties between
-equal timestamps. `created_at` is `timestamptz(3)` because the cursor round-trips through a
+(duplicates or gaps). The `(created_at, id)` row comparison uses the index directly in both
+directions (verified with `EXPLAIN` on 5,000 rows: the comparison is the index condition, "oldest"
+is an `Index Scan Backward`, and neither sorts). Name and size orders filter the owner's rows
+through a `user_id`-prefixed index, then sort them. `id` breaks ties between
+equal timestamps. Every sort order uses the same pattern with its own column; names compare
+under the ICU root collation so the order does not depend on the server's C library (see
+[document-management.md](../documents/document-management.md#sorting-and-keyset-pagination)).
+`created_at` is `timestamptz(3)` because the cursor round-trips through a
 JavaScript `Date`, which has millisecond precision; with microsecond precision the cursor would not
 match the stored value exactly.
 
@@ -241,6 +249,9 @@ cannot validate the inner shape, so invalid output must be rejected before inser
   `actor_user_id` must agree.
 - `metadata` must never contain secrets, tokens or document content (application rule, documented on
   the repository).
+- Actions written so far: `user.registered`, `document.uploaded`, `document.deleted`,
+  `document.viewed` and `document.downloaded` (each file access, recorded before the first byte is
+  sent). Document entries carry only the MIME type and size, never the filename.
 
 **Queries.** A resource's timeline → `audit_logs_resource_occurred_at_id_idx`; a user's activity →
 `audit_logs_actor_user_id_occurred_at_idx` (partial: system actions excluded).

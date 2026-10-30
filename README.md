@@ -12,7 +12,8 @@ LLM, validates them against schemas and flags low-confidence results for human r
 
 Built in phases (see `DocuMind_Interview_Ready_Development_Plan.md`).
 **Phases 0 (foundation), 1 (database and data model), 2 (authentication and authorization), 3
-(UI foundation) and 4 (document upload and object storage) are complete.** The following exist today:
+(UI foundation), 4 (document upload and object storage) and 5 (document management) are
+complete.** The following exist today:
 
 - NestJS API process with liveness and readiness endpoints, security headers, CORS allow-list and
   a consistent error format.
@@ -35,9 +36,13 @@ Built in phases (see `DocuMind_Interview_Ready_Development_Plan.md`).
   size, filename, extension and the file's actual bytes (PDF, PNG, JPEG up to 10 MB) before storing
   it privately under a generated key (local folder in development, Cloudflare R2 in the demo).
   Documents can be listed and deleted (row and file).
+- Document management: search by filename, filters (status, type, format), six sort orders with
+  keyset pagination, the view kept in the URL, a detail page with metadata, inline preview (PDF and
+  images) and download. Files are streamed through the API to their owner only, and every view or
+  download is recorded in the audit log.
 
-Not built yet: OCR, AI extraction, job processing, review workflow, analytics, document
-search/filter/detail and download, and the processing, review, analytics and audit-log screens.
+Not built yet: OCR, AI extraction, job processing, review workflow, analytics, and the
+processing, review, analytics and audit-log screens.
 
 ## Architecture
 
@@ -50,6 +55,7 @@ both system of record and job queue, and object storage for files. See:
 - [Authentication and authorization](docs/security/authentication.md)
 - [UI foundation](docs/frontend/ui-foundation.md)
 - [Document uploads and storage](docs/storage/document-uploads.md)
+- [Document management: search, sorting, viewing and downloading](docs/documents/document-management.md)
 
 ## Tech stack
 
@@ -85,6 +91,7 @@ docs/
   security/       Authentication and authorization
   frontend/       Design tokens, components, layout, accessibility
   storage/        Upload validation, storage keys, consistency, R2 setup
+  documents/      Search, filters, keyset sorting, file access
 docker-compose.yml  Local infrastructure (PostgreSQL)
 ```
 
@@ -192,15 +199,16 @@ with a message naming the variable.
 
 ## API
 
-| Method | Path                    | Auth   | Description                                                                                               |
-| ------ | ----------------------- | ------ | --------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/v1/health`        | None   | Liveness: `{ "status": "ok", "timestamp" }`                                                               |
-| GET    | `/api/v1/health/ready`  | None   | Readiness: same body when the database answers; 503 otherwise                                             |
-| GET    | `/api/v1/me`            | Bearer | The signed-in user; creates the user record on first call                                                 |
-| GET    | `/api/v1/documents`     | Bearer | The caller's documents, newest first; `limit` (1–100, default 20), opaque `cursor`                        |
-| GET    | `/api/v1/documents/:id` | Bearer | One of the caller's documents; 404 for other users' and unknown ids                                       |
-| POST   | `/api/v1/documents`     | Bearer | Multipart upload, one `file` part (PDF/PNG/JPEG ≤ 10 MB); 201 with the document; 413/415/400 on rejection |
-| DELETE | `/api/v1/documents/:id` | Bearer | Deletes the document and its file; 204, or 404 if it is not yours                                         |
+| Method | Path                            | Auth   | Description                                                                                                                                                      |
+| ------ | ------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/v1/health`                | None   | Liveness: `{ "status": "ok", "timestamp" }`                                                                                                                      |
+| GET    | `/api/v1/health/ready`          | None   | Readiness: same body when the database answers; 503 otherwise                                                                                                    |
+| GET    | `/api/v1/me`                    | Bearer | The signed-in user; creates the user record on first call                                                                                                        |
+| GET    | `/api/v1/documents`             | Bearer | The caller's documents: `q`, `status`, `type`, `format`, `sort`, `limit` (1–100, default 20), opaque `cursor` ([details](docs/documents/document-management.md)) |
+| GET    | `/api/v1/documents/:id`         | Bearer | One of the caller's documents; 404 for other users' and unknown ids                                                                                              |
+| GET    | `/api/v1/documents/:id/content` | Bearer | The file; `disposition=inline` (preview) or `attachment` (default, download); audited; 404 if not yours                                                          |
+| POST   | `/api/v1/documents`             | Bearer | Multipart upload, one `file` part (PDF/PNG/JPEG ≤ 10 MB); 201 with the document; 413/415/400 on rejection                                                        |
+| DELETE | `/api/v1/documents/:id`         | Bearer | Deletes the document and its file; 204, or 404 if it is not yours                                                                                                |
 
 All errors use `{ "error": { "code": "<HTTP_STATUS_NAME>", "message": "…" } }`. Server errors
 never include internal details. Authenticated endpoints return 401 (with `WWW-Authenticate`) for a

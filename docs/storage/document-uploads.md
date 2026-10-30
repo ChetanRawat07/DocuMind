@@ -43,9 +43,10 @@ The PDF check is deliberately strict: the PDF specification lets readers skip ju
 
 **Not checked (yet):** whether the whole file is well-formed (a file can start with `%PDF-` and be
 corrupt), embedded JavaScript or other active content inside PDFs, and malware. DocuMind never
-executes or renders uploads in its own origin; Phase 5's download/view must serve them with
-`Content-Disposition` and `X-Content-Type-Options: nosniff`. Parsing in Phase 6 must treat files as
-hostile input.
+executes uploads; they are served with `Content-Disposition`, the detected `Content-Type` and
+`X-Content-Type-Options: nosniff`, and previewed only as images or in the browser's PDF viewer (see
+[document-management.md](../documents/document-management.md)). Parsing in Phase 6 must treat files
+as hostile input.
 
 ## Storage keys
 
@@ -107,4 +108,3 @@ bucket in this project. Do that once credentials exist, before relying on it.
   to 10 MiB in API memory.
 - Duplicate files are stored again; no content hashing yet.
 - New documents stay in `uploaded`; queuing for processing arrives in Phase 9.
-- No download or preview yet (Phase 5).

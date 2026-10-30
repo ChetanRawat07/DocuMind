@@ -44,8 +44,10 @@ WCAG AA contrast (4.5:1) on white.
   while it can't, and then provides it to pages through `useCurrentUser()`.
 - From the `lg` breakpoint (1024px) the sidebar is fixed. Below it, the top bar's menu button opens
   the same navigation in a drawer (`layout/mobile-nav.tsx`).
-- Pages that later phases build (Documents, Processing, Review, Analytics, Audit Logs) render
-  `ComingSoonPage`, which says plainly that the section is not available yet.
+- Pages that later phases build (Processing, Review, Analytics, Audit Logs) render
+  `ComingSoonPage`, which says plainly that the section is not available yet. Documents and the
+  document detail page (`/documents/:id`, breadcrumb "Documents › Details") are described in
+  [document-management.md](../documents/document-management.md).
 
 ## Component kit (`apps/web/src/components/ui`)
 
