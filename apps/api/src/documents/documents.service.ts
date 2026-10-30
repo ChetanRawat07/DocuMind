@@ -1,9 +1,14 @@
 import { randomUUID } from 'node:crypto';
+import type { DocumentContentDisposition } from '@documind/shared';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { AuditLogsRepository } from '../audit/audit-logs.repository.js';
 import { DATABASE } from '../database/database.module.js';
 import type { DatabaseExecutor } from '../database/database.types.js';
-import { ObjectStorage } from '../storage/object-storage.js';
+import {
+  ObjectNotFoundError,
+  ObjectStorage,
+  type StoredObject,
+} from '../storage/object-storage.js';
 import { documentStorageKey } from '../storage/storage-key.js';
 import { type Document, DocumentsRepository } from './documents.repository.js';
 import { validateUpload } from './upload-validation.js';
@@ -77,6 +82,51 @@ export class DocumentsService {
       await this.removeObject(storageKey, 'after a failed upload');
       throw error;
     }
+  }
+
+  /**
+   * Opens the owner's document file for sending, or returns null if the
+   * owner has no such document. Every access is audited before any byte is
+   * sent: if the audit entry cannot be written, the file is not served. The
+   * object is opened first, so a missing file records no access.
+   * `recordAccess: false` is for HEAD requests, which send headers but no
+   * file content, so nothing was viewed or downloaded.
+   */
+  async openContent(
+    ownerId: string,
+    documentId: string,
+    disposition: DocumentContentDisposition,
+    { recordAccess = true }: { readonly recordAccess?: boolean } = {},
+  ): Promise<{ readonly document: Document; readonly content: StoredObject } | null> {
+    const document = await this.documents.findByIdForOwner(ownerId, documentId);
+    if (!document) return null;
+
+    let content: StoredObject;
+    try {
+      content = await this.storage.get(document.storageKey);
+    } catch (error) {
+      if (error instanceof ObjectNotFoundError) {
+        // A row without its object breaks the upload write order; it needs investigating.
+        this.logger.error(`Document ${document.id} has no stored object at ${document.storageKey}`);
+      }
+      throw error;
+    }
+
+    if (!recordAccess) return { document, content };
+    try {
+      await this.auditLogs.append({
+        actor: { type: 'user', userId: ownerId },
+        action: disposition === 'inline' ? 'document.viewed' : 'document.downloaded',
+        resourceType: 'document',
+        resourceId: document.id,
+        requestId: null,
+        metadata: { mimeType: document.mimeType, sizeBytes: document.sizeBytes },
+      });
+    } catch (error) {
+      content.body.destroy();
+      throw error;
+    }
+    return { document, content };
   }
 
   /** Deletes the owner's document and its file. Returns false if the owner has no such document. */

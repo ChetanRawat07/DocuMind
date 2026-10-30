@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, open, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, relative, resolve, sep } from 'node:path';
-import { ObjectStorage } from './object-storage.js';
+import { ObjectNotFoundError, ObjectStorage, type StoredObject } from './object-storage.js';
 import { assertStorageKey } from './storage-key.js';
 
 /**
@@ -23,6 +23,24 @@ export class FilesystemStorage extends ObjectStorage {
       await rename(temporary, path);
     } catch (error) {
       await rm(temporary, { force: true });
+      throw error;
+    }
+  }
+
+  async get(key: string): Promise<StoredObject> {
+    let handle;
+    try {
+      handle = await open(this.pathFor(key), 'r');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new ObjectNotFoundError(key);
+      throw error;
+    }
+    try {
+      const { size } = await handle.stat();
+      // The stream owns the handle from here and closes it when it ends or is destroyed.
+      return { body: handle.createReadStream(), size };
+    } catch (error) {
+      await handle.close();
       throw error;
     }
   }

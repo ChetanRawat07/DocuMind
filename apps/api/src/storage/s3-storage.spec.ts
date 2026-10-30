@@ -1,5 +1,14 @@
-import { DeleteObjectCommand, PutObjectCommand, type S3Client } from '@aws-sdk/client-s3';
+import { Readable } from 'node:stream';
+import { text } from 'node:stream/consumers';
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  NoSuchKey,
+  PutObjectCommand,
+  type S3Client,
+} from '@aws-sdk/client-s3';
 import { describe, expect, it, vi } from 'vitest';
+import { ObjectNotFoundError } from './object-storage.js';
 import { createS3Client, S3Storage } from './s3-storage.js';
 
 const KEY =
@@ -28,6 +37,35 @@ describe('S3Storage', () => {
       ContentType: 'application/pdf',
       ContentLength: body.length,
     });
+  });
+
+  it('gets the object as a stream with its length', async () => {
+    const { storage, send } = storageWithFakeClient();
+    send.mockResolvedValueOnce({ Body: Readable.from(['%PDF-1.7']), ContentLength: 8 });
+
+    const object = await storage.get(KEY);
+
+    const command = send.mock.calls[0]?.[0] as GetObjectCommand;
+    expect(command).toBeInstanceOf(GetObjectCommand);
+    expect(command.input).toEqual({ Bucket: 'documind-documents', Key: KEY });
+    expect(object.size).toBe(8);
+    expect(await text(object.body)).toBe('%PDF-1.7');
+  });
+
+  it('reports a missing key as ObjectNotFoundError', async () => {
+    const { storage, send } = storageWithFakeClient();
+    send.mockRejectedValueOnce(new NoSuchKey({ message: 'NoSuchKey', $metadata: {} }));
+
+    await expect(storage.get(KEY)).rejects.toBeInstanceOf(ObjectNotFoundError);
+  });
+
+  it('rejects a response without a stream or length, releasing the stream', async () => {
+    const { storage, send } = storageWithFakeClient();
+    const body = Readable.from(['x']);
+    send.mockResolvedValueOnce({ Body: body });
+
+    await expect(storage.get(KEY)).rejects.toThrow('no stream or no length');
+    expect(body.destroyed).toBe(true);
   });
 
   it('deletes the object from the bucket', async () => {

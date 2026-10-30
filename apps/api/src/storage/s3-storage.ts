@@ -1,6 +1,13 @@
-import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { Readable } from 'node:stream';
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  NoSuchKey,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import type { OnApplicationShutdown } from '@nestjs/common';
-import { ObjectStorage } from './object-storage.js';
+import { ObjectNotFoundError, ObjectStorage, type StoredObject } from './object-storage.js';
 import { assertStorageKey } from './storage-key.js';
 
 export interface S3StorageOptions {
@@ -51,6 +58,24 @@ export class S3Storage extends ObjectStorage implements OnApplicationShutdown {
         ContentLength: body.length,
       }),
     );
+  }
+
+  async get(key: string): Promise<StoredObject> {
+    assertStorageKey(key);
+    let response;
+    try {
+      response = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+    } catch (error) {
+      if (error instanceof NoSuchKey) throw new ObjectNotFoundError(key);
+      throw error;
+    }
+    // In Node.js the SDK returns the body as a Readable (the HTTP response).
+    const { Body: body, ContentLength: size } = response;
+    if (!(body instanceof Readable) || size === undefined) {
+      if (body instanceof Readable) body.destroy();
+      throw new Error(`Unexpected response reading ${key}: no stream or no length`);
+    }
+    return { body, size };
   }
 
   async delete(key: string): Promise<void> {
