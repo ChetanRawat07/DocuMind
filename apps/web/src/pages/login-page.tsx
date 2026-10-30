@@ -40,7 +40,7 @@ export function LoginPage() {
       footer={
         <>
           No account?{' '}
-          <Link to="/signup" className="font-medium text-blue-700 hover:underline">
+          <Link to="/signup" className="font-medium text-brand-700 hover:underline">
             Create one
           </Link>
         </>
@@ -75,7 +75,7 @@ export function LoginPage() {
         />
         <SubmitButton busy={busy}>{busy ? 'Signing in…' : 'Sign in'}</SubmitButton>
         <p className="text-center text-sm">
-          <Link to="/forgot-password" className="text-blue-700 hover:underline">
+          <Link to="/forgot-password" className="text-brand-700 hover:underline">
             Forgot your password?
           </Link>
         </p>

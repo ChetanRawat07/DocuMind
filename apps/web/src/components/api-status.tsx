@@ -10,8 +10,8 @@ const STATUS_LABEL: Record<ApiStatus, string> = {
 };
 
 const STATUS_DOT_CLASS: Record<ApiStatus, string> = {
-  checking: 'bg-slate-400',
-  online: 'bg-emerald-500',
+  checking: 'bg-gray-400',
+  online: 'bg-green-500',
   offline: 'bg-red-500',
 };
 

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router';
+import { Spinner } from '../components/ui/feedback';
 import { useAuth } from './use-auth';
 
 /**
@@ -13,9 +14,9 @@ export function RequireAuth({ children }: { children: ReactNode }) {
 
   if (status === 'loading') {
     return (
-      <p role="status" className="p-8 text-sm text-slate-600">
-        Loading…
-      </p>
+      <div className="grid min-h-screen place-items-center">
+        <Spinner label="Loading…" />
+      </div>
     );
   }
   if (status === 'signed_out') {

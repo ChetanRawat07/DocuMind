@@ -55,7 +55,7 @@ export function SignupPage() {
           We sent a confirmation link to {email}. Open it to activate your account, then sign in.
         </FormAlert>
         <p className="mt-4 text-center text-sm">
-          <Link to="/login" className="font-medium text-blue-700 hover:underline">
+          <Link to="/login" className="font-medium text-brand-700 hover:underline">
             Back to sign in
           </Link>
         </p>
@@ -69,7 +69,7 @@ export function SignupPage() {
       footer={
         <>
           Already registered?{' '}
-          <Link to="/login" className="font-medium text-blue-700 hover:underline">
+          <Link to="/login" className="font-medium text-brand-700 hover:underline">
             Sign in
           </Link>
         </>

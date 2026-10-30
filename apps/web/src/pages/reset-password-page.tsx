@@ -20,7 +20,7 @@ export function ResetPasswordPage() {
   if (status === 'loading') {
     return (
       <AuthCard title="Reset your password">
-        <p role="status" className="text-sm text-slate-600">
+        <p role="status" className="text-sm text-gray-600">
           Checking your reset link…
         </p>
       </AuthCard>
@@ -32,7 +32,7 @@ export function ResetPasswordPage() {
       <AuthCard title="Link expired">
         <FormAlert tone="error">This reset link is invalid or has expired.</FormAlert>
         <p className="mt-4 text-center text-sm">
-          <Link to="/forgot-password" className="font-medium text-blue-700 hover:underline">
+          <Link to="/forgot-password" className="font-medium text-brand-700 hover:underline">
             Request a new link
           </Link>
         </p>
