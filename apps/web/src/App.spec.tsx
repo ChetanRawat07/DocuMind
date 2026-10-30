@@ -1,46 +1,13 @@
-import { AuthApiError, type Session } from '@supabase/supabase-js';
-import { act, render, screen } from '@testing-library/react';
+import { AuthApiError } from '@supabase/supabase-js';
+import { act, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { App } from './App';
-import { AuthProvider } from './auth/auth-context';
-import { createFakeAuthClient, fakeSession } from './test/fake-auth-client';
+import { fakeSession } from './test/fake-auth-client';
+import { renderApp, stubApi } from './test/render-app';
 
-const USER = {
-  id: '00000000-0000-4000-8000-000000000001',
-  email: 'ada@example.test',
-  displayName: 'Ada',
-  createdAt: '2026-10-29T10:00:00.000Z',
-};
-
-/** Answers the API calls the signed-in page makes. */
-function stubApi() {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn((input: string) => {
-      const url = input;
-      if (url === '/api/v1/me') return Promise.resolve(Response.json(USER));
-      if (url === '/api/v1/documents') {
-        return Promise.resolve(Response.json({ items: [], nextCursor: null }));
-      }
-      return Promise.resolve(
-        Response.json({ status: 'ok', timestamp: '2026-10-29T10:00:00.000Z' }),
-      );
-    }),
-  );
-}
-
-function renderApp(path: string, session: Session | null = null, state?: unknown) {
-  const fake = createFakeAuthClient(session);
-  render(
-    <AuthProvider client={fake.client}>
-      <MemoryRouter initialEntries={[{ pathname: path.split('?')[0] ?? path, state }]}>
-        <App />
-      </MemoryRouter>
-    </AuthProvider>,
-  );
-  return fake;
+/** The dashboard greets the user by name once GET /me has loaded. */
+async function findDashboard() {
+  return screen.findByRole('heading', { level: 1, name: /, Ada$/ });
 }
 
 describe('App routing and authentication flows', () => {
@@ -61,8 +28,8 @@ describe('App routing and authentication flows', () => {
   it('shows the workspace to a signed-in user and loads their identity from the API', async () => {
     renderApp('/', fakeSession());
 
-    expect(await screen.findByText('Ada')).toBeInTheDocument();
-    expect(screen.getByText('No documents yet.')).toBeInTheDocument();
+    expect(await findDashboard()).toBeInTheDocument();
+    expect(await screen.findByText('No documents yet')).toBeInTheDocument();
   });
 
   it('signs in and returns the user to the page they wanted', async () => {
@@ -77,7 +44,7 @@ describe('App routing and authentication flows', () => {
     await user.type(screen.getByLabelText('Password'), 'correct horse battery');
     await user.click(screen.getByRole('button', { name: 'Sign in' }));
 
-    expect(await screen.findByText('Ada')).toBeInTheDocument();
+    expect(await findDashboard()).toBeInTheDocument();
     expect(fake.mocks.signInWithPassword).toHaveBeenCalledWith({
       email: 'ada@example.test',
       password: 'correct horse battery',
@@ -87,7 +54,7 @@ describe('App routing and authentication flows', () => {
   it('ignores an off-site redirect target after sign-in', async () => {
     renderApp('/login', fakeSession(), { from: '//evil.test' });
 
-    expect(await screen.findByText('Ada')).toBeInTheDocument();
+    expect(await findDashboard()).toBeInTheDocument();
   });
 
   it('shows one generic message for wrong credentials', async () => {
@@ -109,7 +76,8 @@ describe('App routing and authentication flows', () => {
     const fake = renderApp('/', fakeSession());
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('button', { name: 'Sign out' }));
+    await user.click(await screen.findByRole('button', { name: 'Account' }));
+    await user.click(screen.getByRole('button', { name: 'Sign out' }));
 
     expect(fake.mocks.signOut).toHaveBeenCalledWith({ scope: 'local' });
     expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
@@ -117,7 +85,7 @@ describe('App routing and authentication flows', () => {
 
   it('returns to the login page when the session ends elsewhere (expiry, other tab)', async () => {
     const fake = renderApp('/', fakeSession());
-    await screen.findByText('Ada');
+    await findDashboard();
 
     act(() => {
       fake.emit('SIGNED_OUT', null);
@@ -178,6 +146,6 @@ describe('App routing and authentication flows', () => {
     await user.click(screen.getByRole('button', { name: 'Save password' }));
 
     expect(fake.mocks.updateUser).toHaveBeenCalledWith({ password: 'a new long password' });
-    expect(await screen.findByText('Ada')).toBeInTheDocument();
+    expect(await findDashboard()).toBeInTheDocument();
   });
 });
