@@ -14,10 +14,12 @@ kit (dashboard, settings, placeholder pages for later sections), and unit, integ
 and accessibility tests, and document upload/delete with content validation and private object
 storage (filesystem adapter locally, S3-compatible adapter for R2), and document management
 (search, filters, keyset-paged sorting, detail page, audited view and download streamed through the
-API). Not yet implemented: OCR, AI, job processing, and the processing, review, analytics and
-audit-log screens.
+API), and text extraction (pdf.js text layer, tesseract.js OCR for scanned pages, stored per page;
+run manually for now). Not yet implemented: AI, job processing, and the processing, review,
+analytics and audit-log screens.
 
 - Schema, constraints and indexes: [database/schema.md](../database/schema.md)
+- Text extraction and OCR: [processing/text-extraction.md](../processing/text-extraction.md)
 - Authentication and authorization: [security/authentication.md](../security/authentication.md)
 - Document management: [documents/document-management.md](../documents/document-management.md)
 - Web UI (tokens, components, layout, accessibility): [frontend/ui-foundation.md](../frontend/ui-foundation.md)

@@ -159,7 +159,8 @@ JavaScript `Date`, which has millisecond precision; with microsecond precision t
 match the stored value exactly.
 
 **Authorization (IDOR).** Every repository read and delete takes the owner id and filters on it in
-SQL. There is no "find by id" without an owner.
+SQL. The one exception is `findByIdForProcessing`, used by background processing that acts on a
+job's document id. It must never receive an id from an HTTP request.
 
 ### processing_jobs
 
@@ -235,7 +236,23 @@ confidence. A table per type, or an entity-attribute-value table, would add join
 integrity the application's Zod validation does not already provide. The trade-off: the database
 cannot validate the inner shape, so invalid output must be rejected before insert (Phase 8).
 
-### audit_logs
+### document_texts and document_text_pages
+
+**Why they exist.** Phase 6 extracts each document's text, page by page, for the AI steps
+(Phase 8) and review (Phase 10). See [processing/text-extraction.md](../processing/text-extraction.md).
+
+**Design.**
+
+- `document_texts`: one row per document (primary key and cascading FK `document_id`), with
+  page, OCR-page and character counts, duration and the engine versions.
+  `CHECK (ocr_page_count BETWEEN 0 AND page_count)`.
+- `document_text_pages`: primary key `(document_id, page_number)`, cascading from
+  `document_texts`. `method` is `text_layer` or `ocr`; `ocr_confidence` (0–1) is present exactly
+  for OCR pages; `text` is capped at 100,000 characters.
+- Re-extraction deletes and re-inserts both in one transaction. Deleting a document removes its
+  text.
+
+**Queries.** A document's pages in order use the primary key `(document_id, page_number)`.
 
 **Why it exists.** An append-only record of security-relevant and user-visible actions (Phase 11).
 
@@ -251,7 +268,8 @@ cannot validate the inner shape, so invalid output must be rejected before inser
   the repository).
 - Actions written so far: `user.registered`, `document.uploaded`, `document.deleted`,
   `document.viewed` and `document.downloaded` (each file access, recorded before the first byte is
-  sent). Document entries carry only the MIME type and size, never the filename.
+  sent), and `document.text_extracted` (actor `system`). Document entries carry only types, sizes
+  and counts, never the filename or text.
 
 **Queries.** A resource's timeline → `audit_logs_resource_occurred_at_id_idx`; a user's activity →
 `audit_logs_actor_user_id_occurred_at_idx` (partial: system actions excluded).

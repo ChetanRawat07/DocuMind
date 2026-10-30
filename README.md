@@ -12,8 +12,8 @@ LLM, validates them against schemas and flags low-confidence results for human r
 
 Built in phases (see `DocuMind_Interview_Ready_Development_Plan.md`).
 **Phases 0 (foundation), 1 (database and data model), 2 (authentication and authorization), 3
-(UI foundation), 4 (document upload and object storage) and 5 (document management) are
-complete.** The following exist today:
+(UI foundation), 4 (document upload and object storage), 5 (document management) and 6 (text
+extraction and OCR) are complete.** The following exist today:
 
 - NestJS API process with liveness and readiness endpoints, security headers, CORS allow-list and
   a consistent error format.
@@ -41,7 +41,12 @@ complete.** The following exist today:
   images) and download. Files are streamed through the API to their owner only, and every view or
   download is recorded in the audit log.
 
-Not built yet: OCR, AI extraction, job processing, review workflow, analytics, and the
+- Text extraction: each PDF page's text layer is used where it has content; scanned pages and
+  images are read with OCR (Tesseract as WebAssembly, English, fully offline). Text is normalized
+  and stored per page with its method and OCR confidence. Until the worker processes jobs (Phase
+  9), extraction is started with `npm run extract -- <documentId>`.
+
+Not built yet: AI extraction, job processing, review workflow, analytics, and the
 processing, review, analytics and audit-log screens.
 
 ## Architecture
@@ -56,6 +61,7 @@ both system of record and job queue, and object storage for files. See:
 - [UI foundation](docs/frontend/ui-foundation.md)
 - [Document uploads and storage](docs/storage/document-uploads.md)
 - [Document management: search, sorting, viewing and downloading](docs/documents/document-management.md)
+- [Text extraction and OCR](docs/processing/text-extraction.md)
 
 ## Tech stack
 
@@ -71,7 +77,7 @@ both system of record and job queue, and object storage for files. See:
 | Routing (web)  | React Router                                   | In use                           |
 | Job queue      | PostgreSQL (`FOR UPDATE SKIP LOCKED`)          | Schema ready; logic in Phase 9   |
 | Object storage | Local folder (dev), Cloudflare R2 (AWS SDK v3) | In use (R2 not yet smoke-tested) |
-| OCR            | Tesseract                                      | Planned, Phase 6                 |
+| OCR            | pdf.js text layer + tesseract.js (WASM)        | Implemented (manual runs)        |
 | AI             | Ollama (local), Cloudflare Workers AI (demo)   | Planned, Phase 7                 |
 | Tests          | Vitest, Supertest, Testing Library, axe-core   | In use                           |
 | Lint/format    | ESLint (typescript-eslint strict), Prettier    | In use                           |
@@ -92,6 +98,7 @@ docs/
   frontend/       Design tokens, components, layout, accessibility
   storage/        Upload validation, storage keys, consistency, R2 setup
   documents/      Search, filters, keyset sorting, file access
+  processing/     Text extraction and OCR
 docker-compose.yml  Local infrastructure (PostgreSQL)
 ```
 
@@ -147,6 +154,7 @@ Details, including recommended hardening, are in
 | `npm run db:rollback`      | Revert the most recent migration                           |
 | `npm run db:reset`         | Revert all migrations (refused in production)              |
 | `npm run db:seed`          | Insert demo data (idempotent; refused in production)       |
+| `npm run extract -- <id>`  | Extract a document's text now (until Phase 9 automates it) |
 | `npm run db:codegen`       | Regenerate row types from the migrated database            |
 | `npm run db:codegen:check` | Fail if generated row types differ from the database       |
 
