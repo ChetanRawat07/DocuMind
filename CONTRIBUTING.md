@@ -44,6 +44,11 @@ npm audit
   repositories. Validate path ids (`ParseUUIDPipe`) and query/body input (shared Zod schemas).
 - **Never log** access or refresh tokens, `Authorization` headers, passwords or document contents.
 - **`VITE_*` variables are public**: they are bundled into the web app. Never put a secret in one.
+- **Web UI** is built from the kit in `apps/web/src/components/ui` and the tokens in `index.css`
+  (see [docs/frontend/ui-foundation.md](docs/frontend/ui-foundation.md)). Every data view handles
+  loading, empty and error states; error text is fixed, never the server's message; metrics without
+  an API show "No data yet", never invented numbers. Interactive controls need an accessible name
+  and keyboard support; keep `a11y.spec.tsx` passing.
 - **Dependencies:** add one only with a clear reason; check `npm audit` afterwards. Install scripts
   are reviewed via `npm install-scripts ls`.
 - **Architecture changes** that affect other phases get an ADR in `docs/adr/`.

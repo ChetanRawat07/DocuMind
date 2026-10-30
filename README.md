@@ -11,8 +11,8 @@ LLM, validates them against schemas and flags low-confidence results for human r
 ## Status
 
 Built in phases (see `DocuMind_Interview_Ready_Development_Plan.md`).
-**Phases 0 (foundation), 1 (database and data model) and 2 (authentication and authorization) are
-complete.** The following exist today:
+**Phases 0 (foundation), 1 (database and data model), 2 (authentication and authorization) and 3
+(UI foundation) are complete.** The following exist today:
 
 - NestJS API process with liveness and readiness endpoints, security headers, CORS allow-list and
   a consistent error format.
@@ -24,12 +24,15 @@ complete.** The following exist today:
   on first request; document endpoints enforce ownership (another user's document is a 404).
 - Worker process skeleton with a graceful-shutdown poll loop (no job processing yet).
 - Shared Zod contracts used by both API and web.
-- React + Vite + Tailwind web app with minimal auth pages and a protected home page (the product
-  UI arrives in Phase 3).
+- React + Vite + Tailwind web app with the product shell: sidebar (a drawer on phones), top bar
+  with breadcrumb and account menu, a dashboard (recent documents from the API; metrics show
+  "No data yet" until analytics exists), settings, styled auth pages, and placeholder pages for
+  sections built in later phases. A small component kit covers cards, status badges, and loading,
+  empty and error states, with automated accessibility tests.
 - Local PostgreSQL via Docker Compose, validated configuration, linting, formatting and tests.
 
-Not built yet: uploads, storage, OCR, AI extraction, job processing, review workflow, analytics
-and the product UI.
+Not built yet: uploads, storage, OCR, AI extraction, job processing, review workflow, analytics,
+and the document, processing, review, analytics and audit-log screens.
 
 ## Architecture
 
@@ -40,12 +43,14 @@ both system of record and job queue, and object storage for files. See:
 - [Architecture decision records](docs/adr/README.md)
 - [Database schema](docs/database/schema.md)
 - [Authentication and authorization](docs/security/authentication.md)
+- [UI foundation](docs/frontend/ui-foundation.md)
 
 ## Tech stack
 
 | Area           | Technology                                     | Status                         |
 | -------------- | ---------------------------------------------- | ------------------------------ |
-| Frontend       | React 19, Vite 8, Tailwind CSS 4, TypeScript   | Scaffolded                     |
+| Frontend       | React 19, Vite 8, Tailwind CSS 4, TypeScript   | In use                         |
+| UI             | Hand-built kit, lucide-react icons, Inter      | In use                         |
 | Backend        | NestJS 12 (Express), TypeScript                | Scaffolded                     |
 | Contracts      | Zod 4 (`packages/shared`)                      | In use                         |
 | Database       | PostgreSQL 17 (Docker locally, Supabase later) | Schema and migrations in place |
@@ -56,7 +61,7 @@ both system of record and job queue, and object storage for files. See:
 | Object storage | Cloudflare R2                                  | Planned, Phase 4               |
 | OCR            | Tesseract                                      | Planned, Phase 6               |
 | AI             | Ollama (local), Cloudflare Workers AI (demo)   | Planned, Phase 7               |
-| Tests          | Vitest, Supertest, Testing Library             | In use                         |
+| Tests          | Vitest, Supertest, Testing Library, axe-core   | In use                         |
 | Lint/format    | ESLint (typescript-eslint strict), Prettier    | In use                         |
 
 ## Repository layout
@@ -72,6 +77,7 @@ docs/
   adr/            Architecture decision records
   database/       Schema, ERD, query patterns, indexes
   security/       Authentication and authorization
+  frontend/       Design tokens, components, layout, accessibility
 docker-compose.yml  Local infrastructure (PostgreSQL)
 ```
 
@@ -89,8 +95,8 @@ npm run db:seed          # optional: demo user and documents
 npm run dev              # shared (watch) + API + worker + web
 ```
 
-Then open <http://localhost:5173>, create an account and sign in. The signed-in page shows
-"API online" when the web app can reach the API through the Vite proxy. The API's liveness endpoint is <http://localhost:3000/api/v1/health>, and
+Then open <http://localhost:5173>, create an account and sign in. Settings → Service status
+shows "API online" when the web app can reach the API through the Vite proxy. The API's liveness endpoint is <http://localhost:3000/api/v1/health>, and
 its readiness endpoint (which checks the database) is <http://localhost:3000/api/v1/health/ready>.
 
 Stop infrastructure with `npm run infra:down` (data persists in the `postgres-data` volume; add
@@ -189,7 +195,7 @@ missing, invalid or expired token, and 503 if Supabase's signing keys cannot be 
 - **`required variable POSTGRES_USER is missing a value`**: create `.env` from `.env.example`.
 - **Port 5432, 3000 or 5173 already in use**: change `POSTGRES_PORT` or `PORT` in `.env`; Vite picks
   the next free port automatically.
-- **Web page says "API unreachable"**: check the API process output in `npm run dev`. The proxy
+- **Settings shows "API unreachable"**: check the API process output in `npm run dev`. The proxy
   targets `localhost:$PORT`.
 - **`Failed to start: Invalid environment configuration`**: the message lists each invalid variable.
 - **`Failed to start: listen EADDRINUSE`**: another process uses `PORT`; change it in `.env`.

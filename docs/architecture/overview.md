@@ -3,18 +3,20 @@
 This document describes the architecture **as implemented** and marks planned parts explicitly.
 Decisions and their reasoning live in [the ADRs](../adr/README.md).
 
-## Current state: Phase 2 (authentication and authorization)
+## Current state: Phase 3 (UI foundation)
 
 Implemented: repository structure, the API process with liveness and readiness endpoints, the
 worker process skeleton, shared contracts, configuration validation, the PostgreSQL schema with
 migrations, repositories for every table, a development seed, Supabase Auth integration (sign-up,
 sign-in, sign-out, password reset in the web app; token verification, a global auth guard and user
-provisioning in the API), read-only document endpoints with ownership enforcement, and unit,
-integration and component tests. Not yet implemented: uploads, storage, OCR, AI, job processing,
-and the product UI.
+provisioning in the API), read-only document endpoints with ownership enforcement, the web app's product shell and component
+kit (dashboard, settings, placeholder pages for later sections), and unit, integration, component
+and accessibility tests. Not yet implemented: uploads, storage, OCR, AI, job processing, and the
+document, processing, review, analytics and audit-log screens.
 
 - Schema, constraints and indexes: [database/schema.md](../database/schema.md)
 - Authentication and authorization: [security/authentication.md](../security/authentication.md)
+- Web UI (tokens, components, layout, accessibility): [frontend/ui-foundation.md](../frontend/ui-foundation.md)
 
 ## Runtime view
 
@@ -77,10 +79,15 @@ apps/api/src
 └── worker/                  Worker-only: WorkerModule, WorkerService, PollingLoop
 
 apps/web/src
-├── auth/                    Supabase client, AuthProvider, useAuth, RequireAuth, safe redirects
-├── pages/                   Login, sign-up, forgot/reset password, signed-in home
-├── services/                API client (bearer token, refresh-once-on-401), health check
-└── components/              Minimal form and status components (restyled in Phase 3)
+├── auth/                    Supabase client, AuthProvider, useAuth, RequireAuth, safe redirects,
+│                            current-user context
+├── layout/                  App shell, sidebar, mobile drawer, top bar, account menu, nav config
+├── pages/                   Auth pages, dashboard, settings, coming-soon and not-found pages
+├── components/ui/           Component kit: button, card, page header, badges, charts, states
+├── components/documents/    Document table
+├── lib/                     Formatting, labels and small pure helpers
+├── services/                API client (bearer token, refresh-once-on-401), useApiQuery, health
+└── test/                    Fake auth client and app render helpers
 packages/shared/src          Zod schemas + types shared by API and web
 ```
 

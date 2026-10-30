@@ -146,4 +146,3 @@ Automated tests need none of this: they sign tokens with a locally generated key
 - **No account deletion flow.** Deleting a user in Supabase leaves their DocuMind row and documents
   in place; a deletion flow must remove stored files, then the rows (Phase 4 onward).
 - **MFA is not enforced** (`aal` is not checked).
-- Signed-out pages are functional but unstyled beyond basics; Phase 3 applies the design system.
