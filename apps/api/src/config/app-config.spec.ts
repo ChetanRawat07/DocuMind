@@ -1,3 +1,4 @@
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ConfigValidationError, loadConfig } from './app-config.js';
 
@@ -17,13 +18,14 @@ describe('loadConfig', () => {
         issuer: 'https://abcdefghijklmnopqrst.supabase.co/auth/v1',
         jwksUrl: new URL('https://abcdefghijklmnopqrst.supabase.co/auth/v1/.well-known/jwks.json'),
       },
+      storage: { driver: 'filesystem', root: resolve('.data/storage') },
     });
   });
 
   it('coerces numeric variables and splits the CORS origin list', () => {
     const config = loadConfig({
       ...REQUIRED,
-      NODE_ENV: 'production',
+      NODE_ENV: 'test',
       PORT: '8080',
       CORS_ALLOWED_ORIGINS: ' https://documind.pages.dev , http://localhost:5173 ',
       WORKER_POLL_INTERVAL_MS: '250',
@@ -124,5 +126,79 @@ describe('loadConfig', () => {
     expect(() =>
       loadConfig({ ...REQUIRED, NODE_ENV: 'production', SUPABASE_URL: 'http://localhost:54321' }),
     ).toThrow(/SUPABASE_URL/);
+  });
+
+  describe('storage', () => {
+    const S3 = {
+      STORAGE_DRIVER: 's3',
+      S3_ENDPOINT: 'https://0123456789abcdef.r2.cloudflarestorage.com',
+      S3_BUCKET: 'documind-documents',
+      S3_ACCESS_KEY_ID: 'access-key-id',
+      S3_SECRET_ACCESS_KEY: 'very-secret-value',
+    };
+
+    it('resolves the filesystem root to an absolute path', () => {
+      expect(loadConfig({ ...REQUIRED, STORAGE_FILESYSTEM_ROOT: 'tmp/objects' }).storage).toEqual({
+        driver: 'filesystem',
+        root: resolve('tmp/objects'),
+      });
+    });
+
+    it('refuses filesystem storage in production', () => {
+      expect(() => loadConfig({ ...REQUIRED, NODE_ENV: 'production' })).toThrow(
+        /STORAGE_DRIVER: filesystem storage is for development/,
+      );
+    });
+
+    it('reads the S3 settings, defaulting the region to auto (R2)', () => {
+      expect(loadConfig({ ...REQUIRED, ...S3 }).storage).toEqual({
+        driver: 's3',
+        endpoint: S3.S3_ENDPOINT,
+        region: 'auto',
+        bucket: S3.S3_BUCKET,
+        accessKeyId: S3.S3_ACCESS_KEY_ID,
+        secretAccessKey: S3.S3_SECRET_ACCESS_KEY,
+      });
+    });
+
+    it('names every missing S3 setting', () => {
+      expect(() => loadConfig({ ...REQUIRED, STORAGE_DRIVER: 's3', S3_BUCKET: 'bucket' })).toThrow(
+        expect.objectContaining({
+          issues: [
+            'S3_ENDPOINT: Required when STORAGE_DRIVER is s3',
+            'S3_ACCESS_KEY_ID: Required when STORAGE_DRIVER is s3',
+            'S3_SECRET_ACCESS_KEY: Required when STORAGE_DRIVER is s3',
+          ],
+        }),
+      );
+    });
+
+    it.each([
+      ['S3_ENDPOINT', 'https://r2.example.test/bucket'],
+      ['S3_ENDPOINT', 'http://r2.example.test'],
+      ['S3_BUCKET', 'Bad_Bucket'],
+      ['S3_BUCKET', 'ab'],
+    ])('rejects %s=%s', (name, value) => {
+      expect(() => loadConfig({ ...REQUIRED, ...S3, [name]: value })).toThrow(
+        ConfigValidationError,
+      );
+    });
+
+    it('allows a plain-http endpoint on localhost outside production only', () => {
+      const local = { ...REQUIRED, ...S3, S3_ENDPOINT: 'http://localhost:9000' };
+      expect(loadConfig(local).storage).toMatchObject({ endpoint: 'http://localhost:9000' });
+      expect(() => loadConfig({ ...local, NODE_ENV: 'production' })).toThrow(
+        /S3_ENDPOINT: Must use https in production/,
+      );
+    });
+
+    it('never echoes the secret access key in validation errors', () => {
+      try {
+        loadConfig({ ...REQUIRED, ...S3, S3_BUCKET: 'Bad_Bucket' });
+        expect.unreachable();
+      } catch (error) {
+        expect(String(error)).not.toContain('very-secret-value');
+      }
+    });
   });
 });
