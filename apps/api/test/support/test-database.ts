@@ -39,7 +39,8 @@ export function createTestDatabase(url = resolveTestDatabase().url): DatabaseExe
 /** Empties every application table. Faster than recreating the schema per test. */
 export async function truncateAllTables(db: DatabaseExecutor): Promise<void> {
   await sql`
-    TRUNCATE audit_logs, document_extractions, processing_jobs, documents, users
+    TRUNCATE audit_logs, document_text_pages, document_texts, document_extractions, processing_jobs,
+      documents, users
     RESTART IDENTITY CASCADE
   `.execute(db);
 }

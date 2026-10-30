@@ -64,6 +64,24 @@ export interface Documents {
   user_id: string;
 }
 
+export interface DocumentTextPages {
+  document_id: string;
+  method: string;
+  ocr_confidence: number | null;
+  page_number: number;
+  text: string;
+}
+
+export interface DocumentTexts {
+  character_count: number;
+  document_id: string;
+  duration_ms: number;
+  engine: string;
+  extracted_at: Generated<Timestamp>;
+  ocr_page_count: number;
+  page_count: number;
+}
+
 export interface ProcessingJobs {
   attempts: Generated<number>;
   available_at: Generated<Timestamp>;
@@ -94,6 +112,8 @@ export interface Users {
 export interface DB {
   audit_logs: AuditLogs;
   document_extractions: DocumentExtractions;
+  document_text_pages: DocumentTextPages;
+  document_texts: DocumentTexts;
   documents: Documents;
   processing_jobs: ProcessingJobs;
   users: Users;

@@ -17,6 +17,8 @@ import { createTestDatabase, truncateAllTables } from '../support/test-database.
 const APPLICATION_TABLES = [
   'audit_logs',
   'document_extractions',
+  'document_text_pages',
+  'document_texts',
   'documents',
   'processing_jobs',
   'users',
