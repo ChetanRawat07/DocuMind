@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fakeSession } from './test/fake-auth-client';
+import { stubXhr, waitForRequest } from './test/fake-xhr';
 import { renderApp, stubApi, testDocument } from './test/render-app';
 
 /**
@@ -46,6 +47,27 @@ describe('accessibility', () => {
     stubApi();
     renderApp(path, fakeSession());
     await screen.findByRole('heading', { level: 1 });
+
+    await expectNoViolations();
+  });
+
+  it('the documents page with a list, a delete confirmation and an upload queue has no violations', async () => {
+    stubApi((url) =>
+      url.startsWith('/api/v1/documents')
+        ? Response.json({ items: [testDocument()], nextCursor: 'next' })
+        : undefined,
+    );
+    const requests = stubXhr();
+    renderApp('/documents', fakeSession());
+    await screen.findByRole('table', { name: 'Your documents' });
+    const user = userEvent.setup({ applyAccept: false });
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!input) throw new Error('file input not found');
+
+    await user.upload(input, [new File(['%PDF-1.7'], 'a.pdf'), new File(['MZ'], 'b.exe')]);
+    (await waitForRequest(requests, 0)).progress(1, 2);
+    await screen.findByRole('progressbar');
+    await user.click(screen.getByRole('button', { name: 'Delete invoice-1023.pdf' }));
 
     await expectNoViolations();
   });

@@ -1,17 +1,25 @@
 import type { DocumentDto } from '@documind/shared';
+import type { ReactNode } from 'react';
 import { DOCUMENT_TYPE_LABEL } from '../../lib/document-labels';
-import { fileExtensionLabel, formatRelativeTime } from '../../lib/format';
+import { fileExtensionLabel, formatBytes, formatRelativeTime } from '../../lib/format';
 import { DocumentStatusBadge } from '../ui/status-badge';
 
-/** Documents as a table: name with upload time, type and status. The Type column hides on small screens. */
+/**
+ * Documents as a table: name with upload time, type and status, plus
+ * optional size and per-row actions. Type and size hide on small screens.
+ */
 export function DocumentTable({
   documents,
   caption,
   now,
+  showSize = false,
+  renderActions,
 }: {
   documents: readonly DocumentDto[];
   caption: string;
   now: Date;
+  showSize?: boolean;
+  renderActions?: (document: DocumentDto) => ReactNode;
 }) {
   return (
     <div className="overflow-x-auto">
@@ -28,9 +36,22 @@ export function DocumentTable({
             >
               Type
             </th>
+            {showSize ? (
+              <th
+                scope="col"
+                className="hidden px-5 py-3 text-right font-medium whitespace-nowrap md:table-cell"
+              >
+                Size
+              </th>
+            ) : null}
             <th scope="col" className="px-5 py-3 font-medium whitespace-nowrap">
               Status
             </th>
+            {renderActions ? (
+              <th scope="col" className="px-5 py-3">
+                <span className="sr-only">Actions</span>
+              </th>
+            ) : null}
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
@@ -66,9 +87,19 @@ export function DocumentTable({
                   ? DOCUMENT_TYPE_LABEL[document.documentType]
                   : 'Not classified'}
               </td>
+              {showSize ? (
+                <td className="hidden px-5 py-3.5 text-right whitespace-nowrap text-gray-600 tabular-nums md:table-cell">
+                  {formatBytes(document.sizeBytes)}
+                </td>
+              ) : null}
               <td className="px-5 py-3.5">
                 <DocumentStatusBadge status={document.status} />
               </td>
+              {renderActions ? (
+                <td className="px-5 py-3.5 text-right whitespace-nowrap">
+                  {renderActions(document)}
+                </td>
+              ) : null}
             </tr>
           ))}
         </tbody>

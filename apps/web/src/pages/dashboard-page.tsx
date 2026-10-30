@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import { useCurrentUser } from '../auth/current-user';
 import { DocumentTable } from '../components/documents/document-table';
+import { buttonClasses } from '../components/ui/button-styles';
 import { Card, CardHeader } from '../components/ui/card';
 import { EmptyState, ErrorState, Skeleton } from '../components/ui/feedback';
 import { PageHeader } from '../components/ui/page-header';
@@ -64,6 +65,14 @@ function RecentDocuments({ now }: { now: Date }) {
         icon={FileText}
         title="No documents yet"
         description="Documents you upload will appear here with their processing status."
+        action={
+          <Link
+            to={`${NAV_ITEMS.documents.path}#upload`}
+            className={buttonClasses('secondary', 'sm')}
+          >
+            Upload a document
+          </Link>
+        }
       />
     );
   }

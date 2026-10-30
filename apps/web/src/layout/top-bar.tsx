@@ -1,7 +1,8 @@
-import { ChevronRight, Menu } from 'lucide-react';
+import { ChevronRight, Menu, Plus } from 'lucide-react';
 import type { Ref } from 'react';
-import { useLocation } from 'react-router';
-import { breadcrumbFor } from './navigation';
+import { Link, useLocation } from 'react-router';
+import { buttonClasses } from '../components/ui/button-styles';
+import { breadcrumbFor, NAV_ITEMS } from './navigation';
 import { UserMenu } from './user-menu';
 
 export function TopBar({
@@ -42,8 +43,18 @@ export function TopBar({
             {crumbs.map((crumb, index) => {
               const isLast = index === crumbs.length - 1;
               return (
-                <li key={crumb} className="flex min-w-0 items-center gap-1.5">
-                  {index > 0 ? <ChevronRight aria-hidden="true" className="size-3.5" /> : null}
+                <li
+                  key={crumb}
+                  // On phones only the current page fits; the section name returns at sm.
+                  className={
+                    isLast
+                      ? 'flex min-w-0 items-center gap-1.5'
+                      : 'hidden items-center gap-1.5 sm:flex'
+                  }
+                >
+                  {index > 0 ? (
+                    <ChevronRight aria-hidden="true" className="hidden size-3.5 sm:block" />
+                  ) : null}
                   <span
                     aria-current={isLast ? 'page' : undefined}
                     className={isLast ? 'truncate font-semibold text-gray-900' : 'truncate'}
@@ -57,7 +68,11 @@ export function TopBar({
         </nav>
       ) : null}
 
-      <div className="ml-auto">
+      <div className="ml-auto flex items-center gap-3">
+        <Link to={`${NAV_ITEMS.documents.path}#upload`} className={buttonClasses('primary', 'sm')}>
+          <Plus aria-hidden="true" className="size-4" />
+          <span className="sr-only sm:not-sr-only">Upload</span>
+        </Link>
         <UserMenu name={userName} email={userEmail} />
       </div>
     </header>
