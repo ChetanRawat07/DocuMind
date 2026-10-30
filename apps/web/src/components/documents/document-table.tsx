@@ -1,12 +1,15 @@
 import type { DocumentDto } from '@documind/shared';
 import type { ReactNode } from 'react';
+import { Link } from 'react-router';
 import { DOCUMENT_TYPE_LABEL } from '../../lib/document-labels';
+import { documentDetailPath } from '../../lib/document-view';
 import { fileExtensionLabel, formatBytes, formatRelativeTime } from '../../lib/format';
 import { DocumentStatusBadge } from '../ui/status-badge';
 
 /**
- * Documents as a table: name with upload time, type and status, plus
- * optional size and per-row actions. Type and size hide on small screens.
+ * Documents as a table: name (linking to the detail page) with upload
+ * time, type and status, plus optional size and per-row actions. Type and
+ * size hide on small screens, and status moves under the name.
  */
 export function DocumentTable({
   documents,
@@ -44,7 +47,10 @@ export function DocumentTable({
                 Size
               </th>
             ) : null}
-            <th scope="col" className="px-5 py-3 font-medium whitespace-nowrap">
+            <th
+              scope="col"
+              className="hidden px-5 py-3 font-medium whitespace-nowrap sm:table-cell"
+            >
               Status
             </th>
             {renderActions ? (
@@ -67,18 +73,23 @@ export function DocumentTable({
                     {fileExtensionLabel(document.originalFilename)}
                   </span>
                   <div className="min-w-0">
-                    <p
+                    <Link
+                      to={documentDetailPath(document.id)}
                       title={document.originalFilename}
-                      className="truncate font-semibold text-gray-900"
+                      className="block truncate rounded-sm font-semibold text-gray-900 hover:text-brand-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
                     >
                       {document.originalFilename}
-                    </p>
-                    <p className="text-xs text-gray-500">
+                    </Link>
+                    <p className="truncate text-xs text-gray-500">
                       Uploaded{' '}
                       <time dateTime={document.createdAt}>
                         {formatRelativeTime(document.createdAt, now)}
                       </time>
                     </p>
+                    {/* Phones have no room for a status column; the badge sits under the name. */}
+                    <div className="mt-1.5 sm:hidden">
+                      <DocumentStatusBadge status={document.status} />
+                    </div>
                   </div>
                 </div>
               </td>
@@ -92,7 +103,7 @@ export function DocumentTable({
                   {formatBytes(document.sizeBytes)}
                 </td>
               ) : null}
-              <td className="px-5 py-3.5">
+              <td className="hidden px-5 py-3.5 sm:table-cell">
                 <DocumentStatusBadge status={document.status} />
               </td>
               {renderActions ? (

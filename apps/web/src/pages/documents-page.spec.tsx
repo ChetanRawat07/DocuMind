@@ -17,10 +17,13 @@ function listResponse(items: ReturnType<typeof testDocument>[], nextCursor: stri
   return Response.json({ items, nextCursor });
 }
 
-async function renderDocuments(handle: Parameters<typeof stubApi>[0] = () => undefined) {
+async function renderDocuments(
+  handle: Parameters<typeof stubApi>[0] = () => undefined,
+  path = '/documents',
+) {
   const fetchMock = stubApi(handle);
   const requests = stubXhr();
-  const fake = renderApp('/documents', fakeSession());
+  const fake = renderApp(path, fakeSession());
   await screen.findByRole('heading', { level: 1, name: 'Documents' });
   return { fetchMock, requests, fake };
 }
@@ -252,6 +255,203 @@ describe('DocumentsPage', () => {
       await user.click(screen.getByRole('button', { name: 'Confirm deleting invoice-1023.pdf' }));
 
       expect(await screen.findByText('No documents yet')).toBeInTheDocument();
+    });
+  });
+
+  describe('search, filters and sort', () => {
+    /** The list requests made so far, as API paths. */
+    const listCalls = (fetchMock: Awaited<ReturnType<typeof renderDocuments>>['fetchMock']) =>
+      fetchMock.mock.calls
+        .map(([url]) => url)
+        .filter((url) => url.startsWith('/api/v1/documents?'));
+
+    it('searches once typing pauses', async () => {
+      const { fetchMock } = await renderDocuments();
+      const user = userEvent.setup();
+
+      await user.type(screen.getByRole('searchbox', { name: 'Search' }), 'acme');
+
+      await waitFor(() => {
+        expect(listCalls(fetchMock).at(-1)).toBe(
+          `/api/v1/documents?q=acme&limit=${DOCUMENTS_PAGE_SIZE}`,
+        );
+      });
+      // One request for the page, one for the finished search: not one per keystroke.
+      expect(listCalls(fetchMock)).toHaveLength(2);
+    });
+
+    it('searches at once on Enter', async () => {
+      const { fetchMock } = await renderDocuments();
+      const user = userEvent.setup();
+
+      await user.type(screen.getByRole('searchbox', { name: 'Search' }), 'acme{Enter}');
+
+      expect(listCalls(fetchMock).at(-1)).toBe(
+        `/api/v1/documents?q=acme&limit=${DOCUMENTS_PAGE_SIZE}`,
+      );
+    });
+
+    it('filters and sorts with the selects', async () => {
+      const { fetchMock } = await renderDocuments();
+      const user = userEvent.setup();
+
+      await user.selectOptions(screen.getByRole('combobox', { name: 'Status' }), 'Failed');
+      await user.selectOptions(screen.getByRole('combobox', { name: 'Type' }), 'Not classified');
+      await user.selectOptions(screen.getByRole('combobox', { name: 'Format' }), 'PDF');
+      await user.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'Name, A to Z');
+
+      expect(listCalls(fetchMock).at(-1)).toBe(
+        `/api/v1/documents?status=failed&type=unclassified&format=pdf&sort=name_asc&limit=${DOCUMENTS_PAGE_SIZE}`,
+      );
+      expect(screen.getByText('Name, A to Z', { selector: 'p' })).toBeInTheDocument();
+    });
+
+    it('restores the view from the URL and ignores invalid values', async () => {
+      const { fetchMock } = await renderDocuments(
+        () => undefined,
+        '/documents?q=acme&status=bogus&sort=largest',
+      );
+
+      expect(screen.getByRole('searchbox', { name: 'Search' })).toHaveValue('acme');
+      expect(screen.getByRole('combobox', { name: 'Status' })).toHaveValue('');
+      expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveValue('largest');
+      await waitFor(() => {
+        expect(listCalls(fetchMock)).toEqual([
+          `/api/v1/documents?q=acme&sort=largest&limit=${DOCUMENTS_PAGE_SIZE}`,
+        ]);
+      });
+    });
+
+    it('says when nothing matches and clears the filters on request', async () => {
+      const { fetchMock } = await renderDocuments(
+        () => undefined,
+        '/documents?q=nothing&format=image&sort=oldest',
+      );
+      const user = userEvent.setup();
+
+      expect(await screen.findByText('No matching documents')).toBeInTheDocument();
+      expect(screen.queryByText('No documents yet')).not.toBeInTheDocument();
+      await user.click(screen.getAllByRole('button', { name: 'Clear filters' })[0] as HTMLElement);
+
+      expect(listCalls(fetchMock).at(-1)).toBe(
+        `/api/v1/documents?sort=oldest&limit=${DOCUMENTS_PAGE_SIZE}`,
+      );
+      expect(screen.getByRole('searchbox', { name: 'Search' })).toHaveValue('');
+      expect(await screen.findByText('No documents yet')).toBeInTheDocument();
+    });
+
+    it('drops a "load more" answer that arrives after the view changed', async () => {
+      let answerOldPage: (response: Response) => void = () => undefined;
+      await renderDocuments((url) => {
+        if (url.includes('status=failed') && url.includes('cursor=')) {
+          return listResponse([
+            testDocument({
+              id: '00000000-0000-4000-8000-0000000000f2',
+              originalFilename: 'failed-older.pdf',
+            }),
+          ]);
+        }
+        if (url.includes('status=failed')) {
+          return listResponse(
+            [testDocument({ originalFilename: 'failed.pdf', status: 'failed' })],
+            'next-failed',
+          );
+        }
+        if (url.includes('cursor=')) {
+          return new Promise<Response>((resolve) => {
+            answerOldPage = resolve;
+          });
+        }
+        if (url.startsWith('/api/v1/documents?')) return listResponse([testDocument()], 'next');
+        return undefined;
+      });
+      const user = userEvent.setup();
+
+      // "Load more" for the unfiltered list hangs while the user switches to Failed
+      // and loads that view's second page. (The stubbed fetch ignores abort
+      // signals, so this also covers a response that arrives despite the abort.)
+      await user.click(await screen.findByRole('button', { name: 'Load more' }));
+      await user.selectOptions(screen.getByRole('combobox', { name: 'Status' }), 'Failed');
+      await user.click(await screen.findByRole('button', { name: 'Load more' }));
+      expect(await screen.findByText('failed-older.pdf')).toBeInTheDocument();
+
+      answerOldPage(
+        listResponse([
+          testDocument({
+            id: '00000000-0000-4000-8000-0000000000e1',
+            originalFilename: 'stale.pdf',
+          }),
+        ]),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(screen.queryByText('stale.pdf')).not.toBeInTheDocument();
+      expect(screen.getByText('failed-older.pdf')).toBeInTheDocument();
+    });
+
+    it('ignores a "load more" failure that arrives after the view changed', async () => {
+      let failOldPage: (response: Response) => void = () => undefined;
+      await renderDocuments((url) => {
+        if (url.includes('status=failed') && url.includes('cursor=')) {
+          return listResponse(
+            [
+              testDocument({
+                id: '00000000-0000-4000-8000-0000000000f3',
+                originalFilename: 'b2.pdf',
+              }),
+            ],
+            'next-failed-2',
+          );
+        }
+        if (url.includes('status=failed')) return listResponse([testDocument()], 'next-failed');
+        if (url.includes('cursor=')) {
+          return new Promise<Response>((resolve) => {
+            failOldPage = resolve;
+          });
+        }
+        if (url.startsWith('/api/v1/documents?')) return listResponse([testDocument()], 'next');
+        return undefined;
+      });
+      const user = userEvent.setup();
+
+      await user.click(await screen.findByRole('button', { name: 'Load more' }));
+      await user.selectOptions(screen.getByRole('combobox', { name: 'Status' }), 'Failed');
+      await user.click(await screen.findByRole('button', { name: 'Load more' }));
+      await screen.findByText('b2.pdf');
+      failOldPage(apiErrorResponse(500));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(screen.queryByText('Could not load more documents.')).not.toBeInTheDocument();
+      expect(screen.getByText('b2.pdf')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Load more' })).toBeEnabled();
+    });
+
+    it('reloads a filtered list after an upload instead of guessing where it belongs', async () => {
+      const { fetchMock, requests } = await renderDocuments(
+        () => undefined,
+        '/documents?sort=name_asc',
+      );
+      const user = userEvent.setup();
+      await screen.findByText('No documents yet');
+      const before = listCalls(fetchMock).length;
+
+      await user.upload(fileInput(), pdf());
+      (await waitForRequest(requests, 0)).respond(201, testDocument({ status: 'uploaded' }));
+
+      await waitFor(() => {
+        expect(listCalls(fetchMock)).toHaveLength(before + 1);
+      });
+    });
+
+    it('links each document to its detail page', async () => {
+      await renderDocuments((url) =>
+        url.startsWith('/api/v1/documents?') ? listResponse([testDocument()]) : undefined,
+      );
+
+      expect(await screen.findByRole('link', { name: 'invoice-1023.pdf' })).toHaveAttribute(
+        'href',
+        `/documents/${testDocument().id}`,
+      );
     });
   });
 

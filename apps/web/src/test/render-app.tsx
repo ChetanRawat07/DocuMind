@@ -51,12 +51,13 @@ export function stubApi(
   return fetchMock;
 }
 
-/** Renders the whole app at `path` with a fake Supabase client holding `session`. */
+/** Renders the whole app at `path` (which may carry a query string) with a fake Supabase client holding `session`. */
 export function renderApp(path: string, session: Session | null = null, state?: unknown) {
   const fake = createFakeAuthClient(session);
+  const { pathname, search, hash } = new URL(path, 'http://localhost');
   render(
     <AuthProvider client={fake.client}>
-      <MemoryRouter initialEntries={[{ pathname: path, state }]}>
+      <MemoryRouter initialEntries={[{ pathname, search, hash, state }]}>
         <App />
       </MemoryRouter>
     </AuthProvider>,

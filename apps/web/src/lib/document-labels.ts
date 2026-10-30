@@ -1,4 +1,10 @@
-import type { DocumentStatus, DocumentType } from '@documind/shared';
+import {
+  type DocumentFormat,
+  type DocumentSort,
+  type DocumentStatus,
+  type DocumentType,
+  UPLOAD_FILE_TYPES,
+} from '@documind/shared';
 
 export type StatusTone = 'neutral' | 'info' | 'warning' | 'success' | 'danger';
 
@@ -18,3 +24,22 @@ export const DOCUMENT_TYPE_LABEL: Record<DocumentType, string> = {
   contract: 'Contract',
   purchase_order: 'Purchase order',
 };
+
+export const DOCUMENT_SORT_LABEL: Record<DocumentSort, string> = {
+  newest: 'Newest first',
+  oldest: 'Oldest first',
+  name_asc: 'Name, A to Z',
+  name_desc: 'Name, Z to A',
+  largest: 'Largest first',
+  smallest: 'Smallest first',
+};
+
+export const DOCUMENT_FORMAT_LABEL: Record<DocumentFormat, string> = {
+  pdf: 'PDF',
+  image: 'Image (PNG, JPEG)',
+};
+
+/** "PDF", "PNG", "JPEG" for the stored MIME type; the type itself if it is not an upload type. */
+export function fileTypeLabel(mimeType: string): string {
+  return UPLOAD_FILE_TYPES.find((type) => type.mimeType === mimeType)?.label ?? mimeType;
+}
