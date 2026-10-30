@@ -12,6 +12,7 @@
     "start:worker": "node dist/worker.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "extract": "npm run build && node --env-file-if-exists=../../.env dist/cli/extract-text.js",
     "db:migrate": "npm run build && node --env-file-if-exists=../../.env dist/database/migrate.js latest",
     "db:rollback": "npm run build && node --env-file-if-exists=../../.env dist/database/migrate.js down",
     "db:reset": "npm run build && node --env-file-if-exists=../../.env dist/database/migrate.js reset",
@@ -22,15 +23,19 @@
   "dependencies": {
     "@aws-sdk/client-s3": "3.1152.0",
     "@documind/shared": "^0.0.0",
+    "@napi-rs/canvas": "1.0.11",
     "@nestjs/common": "^12.2.0",
     "@nestjs/core": "^12.2.0",
     "@nestjs/platform-express": "^12.2.0",
+    "@tesseract.js-data/eng": "1.0.0",
     "helmet": "^8.3.0",
     "jose": "^6.2.12",
     "kysely": "^0.29.7",
+    "pdfjs-dist": "6.4.299",
     "pg": "^8.23.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
+    "tesseract.js": "7.0.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
