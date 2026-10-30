@@ -1,1 +1,30 @@
 @import 'tailwindcss';
+
+/*
+ * Design tokens. The palette follows the UI concept: a light canvas, white
+ * cards, gray neutrals and a single blue accent. Components use these names
+ * (bg-canvas, bg-brand-600, ...) rather than raw hex values.
+ */
+@theme {
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --color-canvas: #f7f8fa;
+  --color-brand-50: #eff6ff;
+  --color-brand-100: #dbeafe;
+  --color-brand-200: #bfdbfe;
+  --color-brand-300: #93c5fd;
+  --color-brand-500: #3b82f6;
+  --color-brand-600: #2563eb;
+  --color-brand-700: #1d4ed8;
+  --color-brand-800: #1e40af;
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+
+  body {
+    @apply bg-canvas text-gray-900 antialiased;
+  }
+}
