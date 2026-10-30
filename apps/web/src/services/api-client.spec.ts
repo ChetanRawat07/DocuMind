@@ -1,7 +1,9 @@
-import { currentUserSchema } from '@documind/shared';
+import { currentUserSchema, documentSchema } from '@documind/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createFakeAuthClient, fakeSession } from '../test/fake-auth-client';
-import { ApiError, createApiClient, SessionExpiredError } from './api-client';
+import { stubXhr, waitForRequest } from '../test/fake-xhr';
+import { testDocument } from '../test/render-app';
+import { ApiError, createApiClient, isAbortError, SessionExpiredError } from './api-client';
 
 const USER = {
   id: '00000000-0000-4000-8000-000000000001',
@@ -119,5 +121,133 @@ describe('createApiClient', () => {
     stubFetch(Response.json({ id: 'not-a-uuid' }));
 
     await expect(createApiClient(client).get('/me', currentUserSchema)).rejects.toThrow();
+  });
+});
+
+describe('upload', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const pdf = () => new File(['%PDF-1.7'], 'invoice.pdf', { type: 'application/pdf' });
+
+  it('posts the file as multipart with the token and reports progress', async () => {
+    const requests = stubXhr();
+    const { client } = createFakeAuthClient(fakeSession('token-1'));
+    const progress: number[] = [];
+    const file = pdf();
+
+    const result = createApiClient(client).upload('/documents', file, documentSchema, {
+      onProgress: (fraction) => progress.push(fraction),
+    });
+    const request0 = await waitForRequest(requests, 0);
+    const xhr = request0;
+    xhr.progress(50, 100);
+    xhr.progress(100, 100);
+    xhr.respond(201, testDocument());
+
+    await expect(result).resolves.toEqual(testDocument());
+    expect(xhr.method).toBe('POST');
+    expect(xhr.url).toBe('/api/v1/documents');
+    expect(xhr.headers.Authorization).toBe('Bearer token-1');
+    const sent = xhr.body?.get('file');
+    expect(sent).toBeInstanceOf(File);
+    expect((sent as File).name).toBe(file.name);
+    expect((sent as File).size).toBe(file.size);
+    expect(progress).toEqual([0.5, 1]);
+  });
+
+  it('refreshes once and re-sends the file after a 401', async () => {
+    const requests = stubXhr();
+    const { client, mocks } = createFakeAuthClient(fakeSession('stale'));
+    mocks.refreshSession.mockResolvedValueOnce({
+      data: { session: fakeSession('fresh'), user: null },
+      error: null,
+    });
+
+    const result = createApiClient(client).upload('/documents', pdf(), documentSchema);
+    const request0 = await waitForRequest(requests, 0);
+    request0.respond(401, { error: { code: 'UNAUTHORIZED', message: 'Access token expired' } });
+    const request1 = await waitForRequest(requests, 1);
+    request1.respond(201, testDocument());
+
+    await expect(result).resolves.toEqual(testDocument());
+    expect(request1.headers.Authorization).toBe('Bearer fresh');
+  });
+
+  it("surfaces the API's rejection reason", async () => {
+    const requests = stubXhr();
+    const { client } = createFakeAuthClient(fakeSession());
+
+    const result = createApiClient(client).upload('/documents', pdf(), documentSchema);
+    const request0 = await waitForRequest(requests, 0);
+    request0.respond(415, {
+      error: {
+        code: 'UNSUPPORTED_MEDIA_TYPE',
+        message: "The file's content is not a valid PDF file.",
+      },
+    });
+
+    await expect(result).rejects.toEqual(
+      new ApiError(415, 'UNSUPPORTED_MEDIA_TYPE', "The file's content is not a valid PDF file."),
+    );
+  });
+
+  it('rejects with an AbortError when cancelled', async () => {
+    const requests = stubXhr();
+    const { client } = createFakeAuthClient(fakeSession());
+    const controller = new AbortController();
+
+    const result = createApiClient(client).upload('/documents', pdf(), documentSchema, {
+      signal: controller.signal,
+    });
+    const request0 = await waitForRequest(requests, 0);
+    controller.abort();
+
+    const error = await result.catch((caught: unknown) => caught);
+    expect(isAbortError(error)).toBe(true);
+    expect(request0.aborted).toBe(true);
+  });
+
+  it('rejects with a TypeError on a network failure', async () => {
+    const requests = stubXhr();
+    const { client } = createFakeAuthClient(fakeSession());
+
+    const result = createApiClient(client).upload('/documents', pdf(), documentSchema);
+    const request0 = await waitForRequest(requests, 0);
+    request0.fail();
+
+    await expect(result).rejects.toBeInstanceOf(TypeError);
+  });
+});
+
+describe('delete', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('sends DELETE with the token and accepts 204', async () => {
+    const { client } = createFakeAuthClient(fakeSession('token-1'));
+    const fetchMock = stubFetch(new Response(null, { status: 204 }));
+
+    await createApiClient(client).delete('/documents/abc');
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/v1/documents/abc');
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('DELETE');
+    expect(authorizationOf(fetchMock, 0)).toBe('Bearer token-1');
+  });
+
+  it('throws ApiError for a 404', async () => {
+    const { client } = createFakeAuthClient(fakeSession());
+    stubFetch(
+      Response.json(
+        { error: { code: 'NOT_FOUND', message: 'Document not found' } },
+        { status: 404 },
+      ),
+    );
+
+    await expect(createApiClient(client).delete('/documents/abc')).rejects.toMatchObject({
+      status: 404,
+    });
   });
 });

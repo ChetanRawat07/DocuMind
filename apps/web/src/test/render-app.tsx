@@ -35,10 +35,11 @@ export function testDocument(overrides: Partial<DocumentDto> = {}): DocumentDto 
  * undefined to fall through to the defaults. Returns the fetch mock.
  */
 export function stubApi(
-  handle: (url: string) => Response | Promise<Response> | undefined = () => undefined,
+  handle: (url: string, init?: RequestInit) => Response | Promise<Response> | undefined = () =>
+    undefined,
 ) {
-  const fetchMock = vi.fn((url: string) => {
-    const custom = handle(url);
+  const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+    const custom = handle(url, init);
     if (custom) return Promise.resolve(custom);
     if (url === '/api/v1/me') return Promise.resolve(Response.json(TEST_USER));
     if (url.startsWith('/api/v1/documents')) {

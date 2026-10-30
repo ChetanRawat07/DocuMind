@@ -29,3 +29,18 @@ export function fileExtensionLabel(filename: string): string {
   const match = /\.([a-z0-9]{1,4})$/i.exec(filename);
   return match?.[1] ? match[1].toUpperCase() : 'FILE';
 }
+
+const BYTE_UNITS = ['B', 'KB', 'MB', 'GB'] as const;
+
+/** "820 B", "1.4 MB", "10 MB". Binary multiples (1 KB = 1024 B), as file managers show them. */
+export function formatBytes(bytes: number, locale?: string): string {
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < BYTE_UNITS.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  const digits = unit === 0 ? 0 : 1;
+  const number = new Intl.NumberFormat(locale, { maximumFractionDigits: digits }).format(value);
+  return `${number} ${BYTE_UNITS[unit] ?? 'B'}`;
+}
