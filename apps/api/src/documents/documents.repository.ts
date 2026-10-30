@@ -112,6 +112,20 @@ export class DocumentsRepository {
   }
 
   /**
+   * A document by id alone, for background processing that acts on a job's
+   * document id. Never call it with an id from an HTTP request: user-facing
+   * reads go through `findByIdForOwner`.
+   */
+  async findByIdForProcessing(documentId: string, executor = this.db): Promise<Document | null> {
+    const row = await executor
+      .selectFrom('documents')
+      .selectAll()
+      .where('id', '=', documentId)
+      .executeTakeFirst();
+    return row ? toDocument(row) : null;
+  }
+
+  /**
    * Keyset pagination in any supported order. `WHERE (sort_value, id) > cursor`
    * (or `<` for descending) continues right after the last row seen, so rows
    * inserted meanwhile never shift page borders the way OFFSET does, and the
