@@ -61,7 +61,7 @@ afterEach(() => {
 });
 
 describe('OllamaProvider', () => {
-  it('sends a non-streaming chat request with the schema, limits and context size', async () => {
+  it('sends a non-streaming, non-truncating chat request with the schema, limits and context size', async () => {
     const fetchMock = stubFetch(() => Response.json(OK_BODY.ollama));
 
     const response = await ollama().generate(REQUEST);
@@ -74,6 +74,7 @@ describe('OllamaProvider', () => {
         { role: 'user', content: 'Say ok.' },
       ],
       stream: false,
+      truncate: false,
       format: SCHEMA,
       options: { temperature: 0, num_predict: 50, num_ctx: OLLAMA_CONTEXT_TOKENS },
     });
@@ -102,6 +103,19 @@ describe('OllamaProvider', () => {
       kind: 'invalid_output',
       retryable: true,
     });
+  });
+
+  it('reports a prompt larger than the context as a permanent invalid request', async () => {
+    stubFetch(() =>
+      Response.json(
+        { error: 'request (12625 tokens) exceeds the available context size (8192 tokens)' },
+        { status: 400 },
+      ),
+    );
+
+    const error = await caught(ollama().generate(REQUEST));
+    expect(error).toMatchObject({ kind: 'invalid_request', retryable: false });
+    expect(error.message).toContain('exceeds the available context size');
   });
 
   it('reports a missing model as a permanent invalid request, with Ollama’s reason', async () => {

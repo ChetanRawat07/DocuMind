@@ -6,9 +6,9 @@ import { postJson, statusError } from './http.js';
 
 /**
  * Context window requested from Ollama. Its default depends on the version
- * and hardware and can be smaller than a multi-page document prompt, and
- * Ollama silently drops what does not fit, so the model would answer about
- * a truncated document. Prompts must stay below this (input plus output).
+ * and hardware and can be smaller than a multi-page document prompt.
+ * Prompts must stay below this (input plus output); a longer one is
+ * refused (see `truncate` below).
  */
 export const OLLAMA_CONTEXT_TOKENS = 8192;
 
@@ -42,6 +42,10 @@ export class OllamaProvider extends AiProvider {
           { role: 'user', content: request.user },
         ],
         stream: false,
+        // By default Ollama silently cuts a prompt that overflows the context to
+        // half of it, so the model would answer about part of the document. This
+        // makes it fail with HTTP 400 (a permanent invalid_request) instead.
+        truncate: false,
         // A JSON Schema here makes Ollama constrain decoding to matching JSON.
         ...(request.jsonSchema ? { format: request.jsonSchema } : {}),
         options: {
