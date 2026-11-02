@@ -22,6 +22,8 @@
     "infra:down": "docker compose down",
     "db:migrate": "npm run db:migrate -w @documind/api",
     "extract": "npm run extract -w @documind/api --",
+    "ai:up": "docker compose --profile ai up -d --wait ollama && docker compose exec ollama ollama pull qwen2.5:3b",
+    "ai:check": "npm run ai:check -w @documind/api",
     "db:rollback": "npm run db:rollback -w @documind/api",
     "db:reset": "npm run db:reset -w @documind/api",
     "db:seed": "npm run db:seed -w @documind/api",

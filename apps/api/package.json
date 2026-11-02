@@ -12,6 +12,7 @@
     "start:worker": "node dist/worker.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "ai:check": "npm run build && node --env-file-if-exists=../../.env dist/cli/ai-check.js",
     "extract": "npm run build && node --env-file-if-exists=../../.env dist/cli/extract-text.js",
     "db:migrate": "npm run build && node --env-file-if-exists=../../.env dist/database/migrate.js latest",
     "db:rollback": "npm run build && node --env-file-if-exists=../../.env dist/database/migrate.js down",
