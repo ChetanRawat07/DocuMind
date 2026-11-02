@@ -144,8 +144,11 @@ describe('DocumentDetailPage', () => {
     });
     const user = userEvent.setup();
 
-    expect(await screen.findByText('Could not load the preview')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    const failed = (await screen.findByText('Could not load the preview')).closest(
+      '[role="alert"]',
+    );
+    if (!(failed instanceof HTMLElement)) throw new Error('preview error not found');
+    await user.click(within(failed).getByRole('button', { name: 'Try again' }));
 
     expect(await screen.findByLabelText('Preview of invoice-1023.pdf')).toBeInTheDocument();
   });

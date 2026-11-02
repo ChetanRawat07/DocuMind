@@ -42,6 +42,8 @@ export function stubApi(
     const custom = handle(url, init);
     if (custom) return Promise.resolve(custom);
     if (url === '/api/v1/me') return Promise.resolve(Response.json(TEST_USER));
+    // A document that has not been processed has no extraction, as in the API.
+    if (url.endsWith('/extraction')) return Promise.resolve(apiErrorResponse(404));
     if (url.startsWith('/api/v1/documents')) {
       return Promise.resolve(Response.json({ items: [], nextCursor: null }));
     }

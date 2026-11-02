@@ -1,10 +1,12 @@
 import { type DocumentDto, documentSchema } from '@documind/shared';
-import { ArrowLeft, FileSearch, FileX } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { ArrowLeft, FileX } from 'lucide-react';
+import { type ReactNode, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { DeleteDocumentButton } from '../components/documents/delete-document-button';
 import { DocumentPreview } from '../components/documents/document-preview';
 import { DownloadDocumentButton } from '../components/documents/download-document-button';
+import { ReprocessButton } from '../components/documents/reprocess-button';
+import { ExtractionPanel } from '../components/review/extraction-panel';
 import { buttonClasses } from '../components/ui/button-styles';
 import { Card, CardHeader } from '../components/ui/card';
 import { EmptyState, ErrorState, Spinner } from '../components/ui/feedback';
@@ -68,13 +70,16 @@ function DocumentDetails({ document }: { document: DocumentDto }) {
 }
 
 /**
- * One document: its metadata, a preview of the file, download and delete.
- * Another user's document and a missing one look the same here, as in the API.
+ * One document: its metadata, a preview of the file beside its extracted
+ * fields for review, download, reprocess and delete. Another user's document
+ * and a missing one look the same here, as in the API.
  */
 export function DocumentDetailPage() {
   const { documentId = '' } = useParams();
   const navigate = useNavigate();
   const result = useApiQuery(`/documents/${encodeURIComponent(documentId)}`, documentSchema);
+  // The document as a review decision or reprocessing left it, until the next load.
+  const [changed, setChanged] = useState<DocumentDto | null>(null);
 
   if (result.status === 'loading') {
     return (
@@ -118,7 +123,7 @@ export function DocumentDetailPage() {
     );
   }
 
-  const document = result.data;
+  const document = changed?.id === result.data.id ? changed : result.data;
   return (
     <>
       <BackToDocuments />
@@ -127,6 +132,7 @@ export function DocumentDetailPage() {
         description={`${fileTypeLabel(document.mimeType)} · ${formatBytes(document.sizeBytes)}`}
         actions={
           <>
+            <ReprocessButton document={document} onQueued={setChanged} />
             <DownloadDocumentButton document={document} />
             <DeleteDocumentButton
               document={document}
@@ -146,16 +152,12 @@ export function DocumentDetailPage() {
         </Card>
         <div className="space-y-4">
           <Card className="overflow-hidden">
-            <CardHeader title="Details" className="border-b border-gray-100 px-5 py-4" />
-            <DocumentDetails document={document} />
+            <CardHeader title="Extracted data" className="border-b border-gray-100 px-5 py-4" />
+            <ExtractionPanel document={document} onDocumentChange={setChanged} />
           </Card>
           <Card className="overflow-hidden">
-            <CardHeader title="Extracted data" className="border-b border-gray-100 px-5 py-4" />
-            <EmptyState
-              icon={FileSearch}
-              title="No extracted data yet"
-              description="Fields read from this document will appear here once processing is available."
-            />
+            <CardHeader title="Details" className="border-b border-gray-100 px-5 py-4" />
+            <DocumentDetails document={document} />
           </Card>
         </div>
       </div>
