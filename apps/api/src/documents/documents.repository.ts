@@ -125,6 +125,19 @@ export class DocumentsRepository {
     return row ? toDocument(row) : null;
   }
 
+  /** Records the classified type; for background processing, like `findByIdForProcessing`. */
+  async setDocumentType(
+    documentId: string,
+    documentType: DocumentType,
+    executor = this.db,
+  ): Promise<void> {
+    await executor
+      .updateTable('documents')
+      .set({ document_type: documentType })
+      .where('id', '=', documentId)
+      .execute();
+  }
+
   /**
    * Keyset pagination in any supported order. `WHERE (sort_value, id) > cursor`
    * (or `<` for descending) continues right after the last row seen, so rows
