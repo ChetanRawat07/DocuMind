@@ -12,8 +12,8 @@ LLM, validates them against schemas and flags low-confidence results for human r
 
 Built in phases (see `DocuMind_Interview_Ready_Development_Plan.md`).
 **Phases 0 (foundation), 1 (database and data model), 2 (authentication and authorization), 3
-(UI foundation), 4 (document upload and object storage), 5 (document management) and 6 (text
-extraction and OCR) are complete.** The following exist today:
+(UI foundation), 4 (document upload and object storage), 5 (document management), 6 (text
+extraction and OCR) and 7 (AI provider abstraction) are complete.** The following exist today:
 
 - NestJS API process with liveness and readiness endpoints, security headers, CORS allow-list and
   a consistent error format.
@@ -46,6 +46,12 @@ extraction and OCR) are complete.** The following exist today:
   and stored per page with its method and OCR confidence. Until the worker processes jobs (Phase
   9), extraction is started with `npm run extract -- <documentId>`.
 
+- AI provider layer: one interface with an Ollama provider (local, Docker) and a Cloudflare
+  Workers AI provider (demo), chosen by configuration. Requests have a timeout, failures are
+  normalized and classified as retryable or permanent, prompts are versioned templates, and
+  structured answers are constrained to a JSON Schema and validated with Zod.
+  `npm run ai:check` tests the configured provider.
+
 Not built yet: AI extraction, job processing, review workflow, analytics, and the
 processing, review, analytics and audit-log screens.
 
@@ -62,25 +68,26 @@ both system of record and job queue, and object storage for files. See:
 - [Document uploads and storage](docs/storage/document-uploads.md)
 - [Document management: search, sorting, viewing and downloading](docs/documents/document-management.md)
 - [Text extraction and OCR](docs/processing/text-extraction.md)
+- [AI providers](docs/ai/ai-providers.md)
 
 ## Tech stack
 
-| Area           | Technology                                     | Status                           |
-| -------------- | ---------------------------------------------- | -------------------------------- |
-| Frontend       | React 19, Vite 8, Tailwind CSS 4, TypeScript   | In use                           |
-| UI             | Hand-built kit, lucide-react icons, Inter      | In use                           |
-| Backend        | NestJS 12 (Express), TypeScript                | Scaffolded                       |
-| Contracts      | Zod 4 (`packages/shared`)                      | In use                           |
-| Database       | PostgreSQL 17 (Docker locally, Supabase later) | Schema and migrations in place   |
-| Data access    | Kysely, `pg`, kysely-codegen                   | In use                           |
-| Auth           | Supabase Auth, supabase-js, `jose` (JWKS)      | In use                           |
-| Routing (web)  | React Router                                   | In use                           |
-| Job queue      | PostgreSQL (`FOR UPDATE SKIP LOCKED`)          | Schema ready; logic in Phase 9   |
-| Object storage | Local folder (dev), Cloudflare R2 (AWS SDK v3) | In use (R2 not yet smoke-tested) |
-| OCR            | pdf.js text layer + tesseract.js (WASM)        | Implemented (manual runs)        |
-| AI             | Ollama (local), Cloudflare Workers AI (demo)   | Planned, Phase 7                 |
-| Tests          | Vitest, Supertest, Testing Library, axe-core   | In use                           |
-| Lint/format    | ESLint (typescript-eslint strict), Prettier    | In use                           |
+| Area           | Technology                                     | Status                            |
+| -------------- | ---------------------------------------------- | --------------------------------- |
+| Frontend       | React 19, Vite 8, Tailwind CSS 4, TypeScript   | In use                            |
+| UI             | Hand-built kit, lucide-react icons, Inter      | In use                            |
+| Backend        | NestJS 12 (Express), TypeScript                | Scaffolded                        |
+| Contracts      | Zod 4 (`packages/shared`)                      | In use                            |
+| Database       | PostgreSQL 17 (Docker locally, Supabase later) | Schema and migrations in place    |
+| Data access    | Kysely, `pg`, kysely-codegen                   | In use                            |
+| Auth           | Supabase Auth, supabase-js, `jose` (JWKS)      | In use                            |
+| Routing (web)  | React Router                                   | In use                            |
+| Job queue      | PostgreSQL (`FOR UPDATE SKIP LOCKED`)          | Schema ready; logic in Phase 9    |
+| Object storage | Local folder (dev), Cloudflare R2 (AWS SDK v3) | In use (R2 not yet smoke-tested)  |
+| OCR            | pdf.js text layer + tesseract.js (WASM)        | Implemented (manual runs)         |
+| AI             | Ollama (local), Cloudflare Workers AI (demo)   | Provider layer; used from Phase 8 |
+| Tests          | Vitest, Supertest, Testing Library, axe-core   | In use                            |
+| Lint/format    | ESLint (typescript-eslint strict), Prettier    | In use                            |
 
 ## Repository layout
 
@@ -99,7 +106,8 @@ docs/
   storage/        Upload validation, storage keys, consistency, R2 setup
   documents/      Search, filters, keyset sorting, file access
   processing/     Text extraction and OCR
-docker-compose.yml  Local infrastructure (PostgreSQL)
+  ai/             AI providers, errors, prompts
+docker-compose.yml  Local infrastructure (PostgreSQL; Ollama with the `ai` profile)
 ```
 
 ## Local setup
@@ -155,6 +163,8 @@ Details, including recommended hardening, are in
 | `npm run db:reset`         | Revert all migrations (refused in production)              |
 | `npm run db:seed`          | Insert demo data (idempotent; refused in production)       |
 | `npm run extract -- <id>`  | Extract a document's text now (until Phase 9 automates it) |
+| `npm run ai:up`            | Start local Ollama (Docker) and download `qwen2.5:3b`      |
+| `npm run ai:check`         | One structured round trip through the configured provider  |
 | `npm run db:codegen`       | Regenerate row types from the migrated database            |
 | `npm run db:codegen:check` | Fail if generated row types differ from the database       |
 
@@ -178,32 +188,40 @@ Run one project with `npx vitest run --project unit` (or `integration`) inside `
 Validated at startup by `apps/api/src/config/app-config.ts`; an invalid value stops the process
 with a message naming the variable.
 
-| Variable                        | Default         | Used by                          | Description                                                              |
-| ------------------------------- | --------------- | -------------------------------- | ------------------------------------------------------------------------ |
-| `NODE_ENV`                      | `development`   | API, worker                      | `development`, `test` or `production`                                    |
-| `LOG_LEVEL`                     | `log`           | API, worker                      | Minimum level: `verbose`, `debug`, `log`, `warn`, `error`, `fatal`       |
-| `LOG_FORMAT`                    | `json`          | API, worker                      | `json` (structured) or `pretty` (local)                                  |
-| `PORT`                          | `3000`          | API, web dev proxy               | HTTP port of the API                                                     |
-| `CORS_ALLOWED_ORIGINS`          | empty           | API                              | Comma-separated bare origins; empty disables cross-origin access         |
-| `WORKER_POLL_INTERVAL_MS`       | `5000`          | Worker                           | Wait after an empty poll (100–60000)                                     |
-| `DATABASE_URL`                  | none (required) | API, worker, CLIs                | `postgres://` URL of the application database; contains credentials      |
-| `DATABASE_POOL_MAX`             | `10`            | API, worker                      | Connections per process (1–50)                                           |
-| `DATABASE_STATEMENT_TIMEOUT_MS` | `30000`         | API, worker                      | Server-side limit per statement (1000–300000)                            |
-| `TEST_DATABASE_URL`             | none            | Integration tests                | Database recreated by the test suite; name must end in `_test`           |
-| `SUPABASE_URL`                  | none (required) | API (validated in all processes) | Supabase project URL; https (http only for localhost outside production) |
-| `VITE_SUPABASE_URL`             | none (required) | Web (public)                     | Supabase project URL for the browser                                     |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | none (required) | Web (public)                     | Publishable/anon key; public by design                                   |
-| `STORAGE_DRIVER`                | `filesystem`    | API, worker                      | `filesystem` (dev/tests; refused in production) or `s3` (R2)             |
-| `STORAGE_FILESYSTEM_ROOT`       | `.data/storage` | API, worker                      | Folder for the filesystem driver, relative to the working directory      |
-| `S3_ENDPOINT`                   | none            | API, worker (`s3` driver)        | e.g. `https://<account-id>.r2.cloudflarestorage.com`; https required     |
-| `S3_REGION`                     | `auto`          | API, worker (`s3` driver)        | `auto` for R2                                                            |
-| `S3_BUCKET`                     | none            | API, worker (`s3` driver)        | Private bucket name                                                      |
-| `S3_ACCESS_KEY_ID`              | none            | API, worker (`s3` driver)        | R2 API token key id                                                      |
-| `S3_SECRET_ACCESS_KEY`          | none            | API, worker (`s3` driver)        | Secret; server-side only, never logged                                   |
-| `POSTGRES_USER`                 | none            | Docker Compose                   | Local database user (required by Compose)                                |
-| `POSTGRES_PASSWORD`             | none            | Docker Compose                   | Local database password (required by Compose)                            |
-| `POSTGRES_DB`                   | none            | Docker Compose                   | Local database name (required by Compose)                                |
-| `POSTGRES_PORT`                 | `5432`          | Docker Compose                   | Host port, bound to 127.0.0.1                                            |
+| Variable                        | Default                                    | Used by                          | Description                                                              |
+| ------------------------------- | ------------------------------------------ | -------------------------------- | ------------------------------------------------------------------------ |
+| `NODE_ENV`                      | `development`                              | API, worker                      | `development`, `test` or `production`                                    |
+| `LOG_LEVEL`                     | `log`                                      | API, worker                      | Minimum level: `verbose`, `debug`, `log`, `warn`, `error`, `fatal`       |
+| `LOG_FORMAT`                    | `json`                                     | API, worker                      | `json` (structured) or `pretty` (local)                                  |
+| `PORT`                          | `3000`                                     | API, web dev proxy               | HTTP port of the API                                                     |
+| `CORS_ALLOWED_ORIGINS`          | empty                                      | API                              | Comma-separated bare origins; empty disables cross-origin access         |
+| `WORKER_POLL_INTERVAL_MS`       | `5000`                                     | Worker                           | Wait after an empty poll (100–60000)                                     |
+| `DATABASE_URL`                  | none (required)                            | API, worker, CLIs                | `postgres://` URL of the application database; contains credentials      |
+| `DATABASE_POOL_MAX`             | `10`                                       | API, worker                      | Connections per process (1–50)                                           |
+| `DATABASE_STATEMENT_TIMEOUT_MS` | `30000`                                    | API, worker                      | Server-side limit per statement (1000–300000)                            |
+| `TEST_DATABASE_URL`             | none                                       | Integration tests                | Database recreated by the test suite; name must end in `_test`           |
+| `SUPABASE_URL`                  | none (required)                            | API (validated in all processes) | Supabase project URL; https (http only for localhost outside production) |
+| `VITE_SUPABASE_URL`             | none (required)                            | Web (public)                     | Supabase project URL for the browser                                     |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | none (required)                            | Web (public)                     | Publishable/anon key; public by design                                   |
+| `STORAGE_DRIVER`                | `filesystem`                               | API, worker                      | `filesystem` (dev/tests; refused in production) or `s3` (R2)             |
+| `STORAGE_FILESYSTEM_ROOT`       | `.data/storage`                            | API, worker                      | Folder for the filesystem driver, relative to the working directory      |
+| `S3_ENDPOINT`                   | none                                       | API, worker (`s3` driver)        | e.g. `https://<account-id>.r2.cloudflarestorage.com`; https required     |
+| `S3_REGION`                     | `auto`                                     | API, worker (`s3` driver)        | `auto` for R2                                                            |
+| `S3_BUCKET`                     | none                                       | API, worker (`s3` driver)        | Private bucket name                                                      |
+| `S3_ACCESS_KEY_ID`              | none                                       | API, worker (`s3` driver)        | R2 API token key id                                                      |
+| `S3_SECRET_ACCESS_KEY`          | none                                       | API, worker (`s3` driver)        | Secret; server-side only, never logged                                   |
+| `AI_PROVIDER`                   | `ollama`                                   | API, worker                      | `ollama` or `cloudflare`; required in production                         |
+| `AI_TIMEOUT_MS`                 | `300000`                                   | API, worker                      | Per-request limit for the AI provider                                    |
+| `OLLAMA_BASE_URL`               | `http://localhost:11434`                   | API, worker (`ollama`)           | https required in production unless localhost                            |
+| `OLLAMA_MODEL`                  | `qwen2.5:3b`                               | API, worker (`ollama`)           | Must be pulled first (`npm run ai:up`)                                   |
+| `CLOUDFLARE_ACCOUNT_ID`         | none                                       | API, worker (`cloudflare`)       | 32-character account id                                                  |
+| `CLOUDFLARE_AI_API_TOKEN`       | none                                       | API, worker (`cloudflare`)       | Secret ("Workers AI: Read" only); server-side only, never logged         |
+| `CLOUDFLARE_AI_MODEL`           | `@cf/meta/llama-3.3-70b-instruct-fp8-fast` | API, worker (`cloudflare`)       | Must support JSON mode                                                   |
+| `POSTGRES_USER`                 | none                                       | Docker Compose                   | Local database user (required by Compose)                                |
+| `POSTGRES_PASSWORD`             | none                                       | Docker Compose                   | Local database password (required by Compose)                            |
+| `POSTGRES_DB`                   | none                                       | Docker Compose                   | Local database name (required by Compose)                                |
+| `POSTGRES_PORT`                 | `5432`                                     | Docker Compose                   | Host port, bound to 127.0.0.1                                            |
+| `OLLAMA_PORT`                   | `11434`                                    | Docker Compose (`ai` profile)    | Host port, bound to 127.0.0.1                                            |
 
 ## API
 

@@ -14,7 +14,7 @@ schedules for later phases.
 | [003](003-object-storage-for-documents.md)     | Object storage for document files               | Accepted | Phase 0    |
 | [004](004-asynchronous-document-processing.md) | Asynchronous document processing                | Accepted | Phase 0    |
 | [005](005-postgresql-job-queue.md)             | PostgreSQL-backed job queue (no RabbitMQ)       | Accepted | Phase 0    |
-| 006                                            | AI provider abstraction                         | Planned  | Phase 7    |
+| [006](006-ai-provider-abstraction.md)          | AI provider abstraction (Ollama, Workers AI)    | Accepted | Phase 7    |
 | [007](007-ocr-strategy.md)                     | Text extraction with pdf.js and tesseract.js    | Accepted | Phase 6    |
 | 008                                            | Retry and idempotency strategy                  | Planned  | Phase 9    |
 | [009](009-zero-cost-deployment.md)             | Zero-cost deployment architecture               | Accepted | Phase 0    |

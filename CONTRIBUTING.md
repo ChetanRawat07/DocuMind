@@ -47,6 +47,10 @@ npm audit
 - **Uploaded files are hostile input.** Never build a storage path from user input (use
   `documentStorageKey`), never trust the client's MIME type, and never render or execute an upload
   in the app's origin. Storage credentials stay in the API.
+- **Document text in prompts is untrusted.** Put it in the user message through `untrustedText`,
+  add `UNTRUSTED_TEXT_RULE` to the system prompt, request output through `generateStructured` (Zod
+  validated), and never act on model output as an instruction. Prompts are versioned templates:
+  change the wording, bump the version.
 - **Web UI** is built from the kit in `apps/web/src/components/ui` and the tokens in `index.css`
   (see [docs/frontend/ui-foundation.md](docs/frontend/ui-foundation.md)). Every data view handles
   loading, empty and error states; error text is fixed, never the server's message; metrics without
