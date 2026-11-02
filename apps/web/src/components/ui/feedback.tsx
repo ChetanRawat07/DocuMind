@@ -1,6 +1,7 @@
 import { CircleAlert, LoaderCircle, type LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { cx } from '../../lib/cx';
+import { ApiError } from '../../services/api-client';
 import { Button } from './button';
 
 /** Announced to screen readers; the spinner itself is decorative. */
@@ -48,18 +49,25 @@ export function EmptyState({
   );
 }
 
-/** A failed load with a way to try again. Messages are fixed text, never raw server errors. */
+/**
+ * A failed load with a way to try again. Messages are fixed text, never raw
+ * server errors. When the failure is an API error, its request id is shown as
+ * a reference the user can quote, which support can find in the logs.
+ */
 export function ErrorState({
   title = 'Something went wrong',
   description,
   onRetry,
+  error,
   className,
 }: {
   title?: string;
   description: string;
   onRetry?: () => void;
+  error?: unknown;
   className?: string;
 }) {
+  const reference = error instanceof ApiError ? error.requestId : null;
   return (
     <div
       role="alert"
@@ -70,6 +78,11 @@ export function ErrorState({
       </span>
       <p className="mt-3 text-sm font-semibold text-gray-900">{title}</p>
       <p className="mt-1 max-w-sm text-sm text-gray-500">{description}</p>
+      {reference ? (
+        <p className="mt-2 text-xs text-gray-500">
+          Reference: <span className="font-mono select-all">{reference}</span>
+        </p>
+      ) : null}
       {onRetry ? (
         <Button variant="secondary" size="sm" className="mt-4" onClick={onRetry}>
           Try again

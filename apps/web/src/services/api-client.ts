@@ -4,12 +4,16 @@ import type { AuthClient } from '../auth/auth-client';
 
 export const API_BASE_PATH = '/api/v1';
 
-/** A non-2xx API response, carrying the shared error envelope's code. */
+/**
+ * A non-2xx API response, carrying the shared error envelope's code and the
+ * request id that matches it to the server's logs.
+ */
 export class ApiError extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
     message: string,
+    readonly requestId: string | null = null,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -206,7 +210,12 @@ function sendWithProgress(
 async function toApiError(response: RawResponse): Promise<ApiError> {
   const body = apiErrorResponseSchema.safeParse(await response.json().catch(() => null));
   return body.success
-    ? new ApiError(response.status, body.data.error.code, body.data.error.message)
+    ? new ApiError(
+        response.status,
+        body.data.error.code,
+        body.data.error.message,
+        body.data.error.requestId ?? null,
+      )
     : new ApiError(response.status, 'HTTP_ERROR', `Request failed with HTTP ${response.status}`);
 }
 

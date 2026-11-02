@@ -223,6 +223,7 @@ function LoadedExtraction({
         title="Could not load the extracted data"
         description="Check your connection and try again."
         onRetry={result.retry}
+        error={result.error}
       />
     );
   }

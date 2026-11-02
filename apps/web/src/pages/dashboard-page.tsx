@@ -56,6 +56,7 @@ function RecentDocuments({ now }: { now: Date }) {
         title="Could not load documents"
         description="Check your connection and try again."
         onRetry={recent.retry}
+        error={recent.error}
       />
     );
   }
