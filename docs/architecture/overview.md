@@ -3,7 +3,7 @@
 This document describes the architecture **as implemented** and marks planned parts explicitly.
 Decisions and their reasoning live in [the ADRs](../adr/README.md).
 
-## Current state: Phase 10 (review workflow)
+## Current state: Phase 11 (audit logging and observability)
 
 Implemented: repository structure, the API process with liveness and readiness endpoints, the
 worker process skeleton, shared contracts, configuration validation, the PostgreSQL schema with
@@ -20,8 +20,9 @@ demo, chosen by configuration), and document classification and structured extra
 evidence-based confidence, and the job queue: upload enqueues a job, and the worker claims it,
 runs text extraction and AI extraction, and retries, dead-letters or recovers it after a crash,
 and the review workflow: confident extractions complete on their own, the rest are reviewed field
-by field, then approved or rejected. Not yet implemented: the processing, analytics and audit-log
-screens.
+by field, then approved or rejected, and observability: request ids that follow a request into its
+job, the worker and the AI calls; structured JSON logs; step timings on each job; the Processing
+and Audit Logs screens and a per-document activity timeline. Not yet implemented: analytics.
 
 - Schema, constraints and indexes: [database/schema.md](../database/schema.md)
 - Text extraction and OCR: [processing/text-extraction.md](../processing/text-extraction.md)
@@ -29,6 +30,7 @@ screens.
 - Classification and extraction: [processing/document-extraction.md](../processing/document-extraction.md)
 - Job queue, retries and the worker: [processing/job-queue.md](../processing/job-queue.md)
 - Review workflow: [processing/review-workflow.md](../processing/review-workflow.md)
+- Logs, request ids, metrics and health: [operations/observability.md](../operations/observability.md)
 - Authentication and authorization: [security/authentication.md](../security/authentication.md)
 - Document management: [documents/document-management.md](../documents/document-management.md)
 - Web UI (tokens, components, layout, accessibility): [frontend/ui-foundation.md](../frontend/ui-foundation.md)
@@ -127,6 +129,7 @@ Rules:
 1. `loadConfig(process.env)` validates every variable with Zod. On failure the process prints which
    variables are invalid (never their values) and exits with code 1.
 2. The logger is created from config: JSON lines when `LOG_FORMAT=json`, readable output otherwise.
+   Every line carries the current request and job ids ([observability](../operations/observability.md)).
 3. Nest boots the process's root module. The validated config is injected as `APP_CONFIG`.
 4. Shutdown hooks are enabled. On SIGTERM/SIGINT Nest runs, in order: `beforeApplicationShutdown`
    (the worker stops polling and finishes its in-flight tick), closes the HTTP server (in-flight

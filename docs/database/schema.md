@@ -53,6 +53,9 @@ erDiagram
         timestamptz lease_expires_at
         text last_error_code
         text last_error_message
+        text request_id "API request that queued it"
+        integer text_extraction_ms
+        integer ai_ms
         timestamptz started_at
         timestamptz finished_at
         timestamptz created_at
@@ -186,6 +189,11 @@ job's document id. It must never receive an id from an HTTP request.
 UI. Phase 1 defined the schema that makes the queue safe; Phase 9 built the behavior (claiming,
 leases, retries, completion), described in [job queue](../processing/job-queue.md).
 
+**Correlation and timings (Phase 11).** `request_id` is the API request that queued the job;
+the worker restores it while running the job, so its logs and audit entries trace back to the
+request. `text_extraction_ms` and `ai_ms` hold each step's duration from the attempt that last ran
+it, written with the same fence as `stage`. See [operations/observability.md](../operations/observability.md).
+
 **State.** `status`: `queued → running → succeeded | failed`. A retryable failure returns the job to
 `queued` with a later `available_at` (backoff) and incremented `attempts`. `failed` is terminal (the
 dead-letter state); `last_error_code`/`last_error_message` (capped at 2,000 characters) keep the
@@ -203,12 +211,13 @@ reason.
 
 **Queries and indexes.**
 
-| Query (phase)                                                                                                                | Index                                                          |
-| ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| Claim next job: `WHERE status = 'queued' AND available_at <= now() ORDER BY available_at LIMIT 1 FOR UPDATE SKIP LOCKED` (9) | `processing_jobs_claimable_idx` (partial, `status = 'queued'`) |
-| Recover stale jobs: `WHERE status = 'running' AND lease_expires_at < now()` (9)                                              | `processing_jobs_running_lease_idx` (partial)                  |
-| Active job for a document (1)                                                                                                | `processing_jobs_one_active_per_document_key`                  |
-| A document's job history; FK cascade from `documents` (5)                                                                    | `processing_jobs_document_id_created_at_idx`                   |
+| Query (phase)                                                                                                                | Index                                                                                             |
+| ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Claim next job: `WHERE status = 'queued' AND available_at <= now() ORDER BY available_at LIMIT 1 FOR UPDATE SKIP LOCKED` (9) | `processing_jobs_claimable_idx` (partial, `status = 'queued'`)                                    |
+| Recover stale jobs: `WHERE status = 'running' AND lease_expires_at < now()` (9)                                              | `processing_jobs_running_lease_idx` (partial)                                                     |
+| Active job for a document (1)                                                                                                | `processing_jobs_one_active_per_document_key`                                                     |
+| A document's job history; FK cascade from `documents` (5)                                                                    | `processing_jobs_document_id_created_at_idx`                                                      |
+| A user's jobs and the Processing summary: join `documents` on `user_id` (11)                                                 | `documents_user_id_*` then each document's jobs; no index on the user's jobs by time (sorts them) |
 
 Partial indexes stay small: finished jobs, which are the large majority over time, are not in the
 claim or lease indexes at all.
@@ -321,8 +330,12 @@ decision updates only `WHERE decision IS NULL`.
   `document.field_reviewed`, `document.approved` and `document.rejected`. Document entries carry
   only types, sizes, counts and field names, never the filename, values or text.
 
-**Queries.** A resource's timeline → `audit_logs_resource_occurred_at_id_idx`; a user's activity →
-`audit_logs_actor_user_id_occurred_at_idx` (partial: system actions excluded).
+**Queries.** A resource's timeline → `audit_logs_resource_occurred_at_id_idx`. A user's audit log
+(Phase 11) is two halves merged by id, each limited before the merge: the user's own entries →
+`audit_logs_actor_user_id_id_idx` (partial: system actions excluded), and system entries about
+the user's documents → a join to `documents` and the resource index. Pages use the identity `id`
+as the cursor: it is exact and increases with insertion, while a microsecond `occurred_at` would
+not survive a JavaScript `Date`.
 
 **Retention.** This is the fastest-growing table. Phase 15 should evaluate time-based partitioning
 (monthly), which turns retention purges into cheap partition drops.

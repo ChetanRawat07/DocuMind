@@ -73,7 +73,14 @@ extraction) and 9 (asynchronous queue and workers) are complete.** The following
   reprocessed. Every action is audited without values
   ([details](docs/processing/review-workflow.md)).
 
-Not built yet: analytics, and the processing, analytics and audit-log screens.
+- Observability: every request gets an id (returned in `X-Request-Id` and error bodies) that
+  follows it into its audit entries, its processing job, the worker's logs and the AI call logs.
+  Logs are JSON lines with top-level fields and key redaction. Jobs record text-extraction and AI
+  durations. The Processing screen shows the queue, outcomes, durations and failure reasons, the
+  Audit Logs screen the user's trail, and each document its activity
+  ([details](docs/operations/observability.md)).
+
+Not built yet: analytics.
 
 ## Architecture
 
@@ -263,6 +270,10 @@ with a message naming the variable.
 | PUT    | `/api/v1/documents/:id/extraction/fields/:field` | Bearer | Confirms or corrects one field while the document is in review                                                                                                   |
 | POST   | `/api/v1/documents/:id/extraction/approve`       | Bearer | Completes the document; 409 while flagged fields are unchecked                                                                                                   |
 | POST   | `/api/v1/documents/:id/extraction/reject`        | Bearer | Marks the document `rejected`, with an optional reason                                                                                                           |
+| GET    | `/api/v1/documents/:id/activity`                 | Bearer | The document's 50 most recent audit entries (its timeline); 404 if not yours                                                                                     |
+| GET    | `/api/v1/processing/summary`                     | Bearer | Your queue now, and the last 7 days' outcomes, failure codes and step durations                                                                                  |
+| GET    | `/api/v1/processing/jobs`                        | Bearer | Your 50 most recent jobs across documents; `?status=` filter                                                                                                     |
+| GET    | `/api/v1/audit-logs`                             | Bearer | Your actions and the system's actions on your documents, newest first; `?cursor=` paging                                                                         |
 
 All errors use `{ "error": { "code": "<HTTP_STATUS_NAME>", "message": "…" } }`. Server errors
 never include internal details. Authenticated endpoints return 401 (with `WWW-Authenticate`) for a

@@ -86,10 +86,10 @@ RETURNING *;
 
 ## API
 
-| Method | Path                         | Result                                                                       |
-| ------ | ---------------------------- | ---------------------------------------------------------------------------- |
-| GET    | `/api/v1/documents/:id/jobs` | The 20 most recent jobs, newest first: status, stage, attempts, `errorCode`… |
-| POST   | `/api/v1/documents/:id/jobs` | 202 with a new queued job, for a `failed` or `uploaded` document             |
+| Method | Path                         | Result                                                                                               |
+| ------ | ---------------------------- | ---------------------------------------------------------------------------------------------------- |
+| GET    | `/api/v1/documents/:id/jobs` | The 20 most recent jobs, newest first: status, stage, attempts, `errorCode`, `requestId`, step times |
+| POST   | `/api/v1/documents/:id/jobs` | 202 with a new queued job, for a `failed` or `uploaded` document                                     |
 
 - **POST is idempotent.** For a document that is already queued or processing, it returns the
   active job.
