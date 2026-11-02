@@ -20,6 +20,7 @@ const APPLICATION_TABLES = [
   'document_text_pages',
   'document_texts',
   'documents',
+  'extraction_reviews',
   'processing_jobs',
   'users',
 ];

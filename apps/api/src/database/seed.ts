@@ -50,7 +50,8 @@ runEntrypoint('seed', async () => {
             size_bytes: 184_320,
             storage_key: storageKey(INVOICE_ID),
             document_type: 'invoice',
-            status: 'completed',
+            // Its total scored 0.72, below the review threshold.
+            status: 'needs_review',
             processed_at: processedAt,
             created_at: new Date('2026-10-20T10:00:00.000Z'),
           },

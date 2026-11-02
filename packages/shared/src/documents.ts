@@ -3,7 +3,8 @@ import type { UploadMimeType } from './uploads.js';
 
 /**
  * User-facing document lifecycle. Fine-grained pipeline progress lives on the
- * processing job (see processing.ts), not here.
+ * processing job (see processing.ts), not here. `rejected` means a reviewer
+ * found the extraction unusable; processing did not fail.
  */
 export const DOCUMENT_STATUSES = [
   'uploaded',
@@ -12,6 +13,7 @@ export const DOCUMENT_STATUSES = [
   'needs_review',
   'completed',
   'failed',
+  'rejected',
 ] as const;
 export type DocumentStatus = (typeof DOCUMENT_STATUSES)[number];
 
@@ -20,6 +22,7 @@ export const PROCESSED_DOCUMENT_STATUSES = [
   'needs_review',
   'completed',
   'failed',
+  'rejected',
 ] as const satisfies readonly DocumentStatus[];
 
 export const DOCUMENT_TYPES = ['invoice', 'contract', 'purchase_order'] as const;

@@ -322,9 +322,97 @@ describe('schema constraints', () => {
         { code: PG.checkViolation, constraint },
       );
     });
+    describe('extraction_reviews', () => {
+      async function insertExtraction(): Promise<string> {
+        const { id: documentId } = await insertDocument(db, ownerId, { status: 'needs_review' });
+        const { id: jobId } = await insertJob(db, documentId, 'succeeded');
+        const row = await db
+          .insertInto('document_extractions')
+          .values(extractionFor(documentId, jobId))
+          .returning('id')
+          .executeTakeFirstOrThrow();
+        return row.id;
+      }
+
+      it.each([
+        [
+          'fields that are not a JSON object',
+          { fields: JSON.stringify(['a']) },
+          'extraction_reviews_fields_check',
+        ],
+        [
+          'a decision without a time',
+          { decision: 'approved' },
+          'extraction_reviews_decided_at_matches_decision',
+        ],
+        [
+          'a reviewer without a decision',
+          { decided_by: 'OWNER' },
+          'extraction_reviews_decided_by_matches_decision',
+        ],
+        [
+          'a rejection without a reviewer',
+          { decision: 'rejected', decided_at: new Date() },
+          'extraction_reviews_decided_by_matches_decision',
+        ],
+        [
+          'a reason on an approval',
+          { decision: 'approved', decided_at: new Date(), reject_reason: 'no' },
+          'extraction_reviews_reason_only_when_rejected',
+        ],
+        [
+          'an unknown decision',
+          { decision: 'maybe', decided_at: new Date() },
+          'extraction_reviews_decision_check',
+        ],
+      ] as const)('rejects %s', async (_case, override, constraint) => {
+        const extractionId = await insertExtraction();
+        const values = Object.fromEntries(
+          Object.entries(override).map(([key, value]) => [
+            key,
+            value === 'OWNER' ? ownerId : value,
+          ]),
+        );
+
+        await expectPgError(
+          db
+            .insertInto('extraction_reviews')
+            .values({ extraction_id: extractionId, ...values })
+            .execute(),
+          { code: PG.checkViolation, constraint },
+        );
+      });
+
+      it('allows an automatic approval, which has no reviewer', async () => {
+        const extractionId = await insertExtraction();
+
+        await db
+          .insertInto('extraction_reviews')
+          .values({ extraction_id: extractionId, decision: 'approved', decided_at: new Date() })
+          .execute();
+      });
+
+      it('is deleted with its extraction', async () => {
+        const extractionId = await insertExtraction();
+        await db.insertInto('extraction_reviews').values({ extraction_id: extractionId }).execute();
+
+        await db.deleteFrom('documents').execute();
+
+        expect(await db.selectFrom('extraction_reviews').selectAll().execute()).toEqual([]);
+      });
+    });
   });
 
   describe('row-level security', () => {
+    it('is enabled on every application table', async () => {
+      const result = await sql<{ tablename: string }>`
+        SELECT tablename FROM pg_tables
+        WHERE schemaname = 'public' AND tablename NOT LIKE 'kysely_%' AND NOT rowsecurity
+      `.execute(db);
+
+      expect(result.rows).toEqual([]);
+    });
+
     it('shows no rows to a non-owner role, even one granted SELECT', async () => {
       const { id: documentId } = await insertDocument(db, ownerId);
       await insertJob(db, documentId);

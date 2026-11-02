@@ -17,6 +17,7 @@ export const DOCUMENT_STATUS_DISPLAY: Record<DocumentStatus, { label: string; to
     needs_review: { label: 'Needs review', tone: 'warning' },
     completed: { label: 'Complete', tone: 'success' },
     failed: { label: 'Failed', tone: 'danger' },
+    rejected: { label: 'Rejected', tone: 'danger' },
   };
 
 export const DOCUMENT_TYPE_LABEL: Record<DocumentType, string> = {

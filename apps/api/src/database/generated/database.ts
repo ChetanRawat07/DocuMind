@@ -86,6 +86,17 @@ export interface DocumentTexts {
   page_count: number;
 }
 
+export interface ExtractionReviews {
+  created_at: Generated<Timestamp>;
+  decided_at: Timestamp | null;
+  decided_by: string | null;
+  decision: string | null;
+  extraction_id: string;
+  fields: Generated<Json>;
+  reject_reason: string | null;
+  updated_at: Generated<Timestamp>;
+}
+
 export interface ProcessingJobs {
   attempts: Generated<number>;
   available_at: Generated<Timestamp>;
@@ -119,6 +130,7 @@ export interface DB {
   document_text_pages: DocumentTextPages;
   document_texts: DocumentTexts;
   documents: Documents;
+  extraction_reviews: ExtractionReviews;
   processing_jobs: ProcessingJobs;
   users: Users;
 }
