@@ -257,7 +257,7 @@ export class DocumentsController {
   }
 }
 
-function toDocumentDto(document: Document): DocumentDto {
+export function toDocumentDto(document: Document): DocumentDto {
   return {
     id: document.id,
     originalFilename: document.originalFilename,
