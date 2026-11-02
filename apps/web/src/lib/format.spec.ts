@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { fileExtensionLabel, formatDate, formatRelativeTime } from './format';
+import {
+  fileExtensionLabel,
+  formatAmount,
+  formatCalendarDate,
+  formatDate,
+  formatPercent,
+  formatRelativeTime,
+} from './format';
 import { greetingFor } from './greeting';
 import { initialsOf } from './initials';
 
@@ -21,6 +28,32 @@ describe('formatRelativeTime', () => {
 describe('formatDate', () => {
   it('formats a medium date', () => {
     expect(formatDate('2026-10-29T12:00:00.000Z', 'en-GB')).toBe('29 Oct 2026');
+  });
+});
+
+describe('formatCalendarDate', () => {
+  it('keeps the calendar day whatever the timezone', () => {
+    // Read in UTC: a viewer west of Greenwich would otherwise see 19 Oct.
+    expect(formatCalendarDate('2026-10-20', 'en-GB')).toBe('20 Oct 2026');
+  });
+});
+
+describe('formatAmount', () => {
+  it('shows the currency when it is known', () => {
+    expect(formatAmount(58_200, 'INR', 'en-IN')).toBe('₹58,200.00');
+    expect(formatAmount(1250.5, 'USD', 'en-US')).toBe('$1,250.50');
+  });
+
+  it('falls back to the number for a missing or unknown currency', () => {
+    expect(formatAmount(100, null, 'en-US')).toBe('100.00');
+    expect(formatAmount(100, 'ZZ', 'en-US')).toBe('100.00');
+  });
+});
+
+describe('formatPercent', () => {
+  it('rounds to whole percent', () => {
+    expect(formatPercent(0.724, 'en')).toBe('72%');
+    expect(formatPercent(0.95, 'en')).toBe('95%');
   });
 });
 

@@ -252,6 +252,58 @@ describe('delete', () => {
   });
 });
 
+describe('send', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('sends JSON with the token and validates the response', async () => {
+    const { client } = createFakeAuthClient(fakeSession('token-1'));
+    const document = testDocument({ status: 'completed' });
+    const fetchMock = stubFetch(Response.json(document));
+
+    const result = await createApiClient(client).send(
+      'POST',
+      '/documents/abc/extraction/approve',
+      { extractionId: 'x' },
+      documentSchema,
+    );
+
+    expect(result).toEqual(document);
+    const init = fetchMock.mock.calls[0]?.[1];
+    expect(init?.method).toBe('POST');
+    expect(init?.body).toBe('{"extractionId":"x"}');
+    expect(init?.headers).toMatchObject({ 'Content-Type': 'application/json' });
+    expect(authorizationOf(fetchMock, 0)).toBe('Bearer token-1');
+  });
+
+  it('re-sends the body after refreshing an expired token', async () => {
+    const { client } = createFakeAuthClient(fakeSession('old'));
+    const fetchMock = stubFetch(unauthorized(), Response.json(testDocument()));
+
+    await createApiClient(client).send('PUT', '/x', { a: 1 }, documentSchema);
+
+    expect(fetchMock.mock.calls[1]?.[1]?.body).toBe('{"a":1}');
+  });
+
+  it("surfaces the API's conflict message", async () => {
+    const { client } = createFakeAuthClient(fakeSession());
+    stubFetch(
+      Response.json(
+        { error: { code: 'CONFLICT', message: 'Confirm or correct the flagged fields first' } },
+        { status: 409 },
+      ),
+    );
+
+    await expect(
+      createApiClient(client).send('POST', '/x', {}, documentSchema),
+    ).rejects.toMatchObject({
+      status: 409,
+      message: 'Confirm or correct the flagged fields first',
+    });
+  });
+});
+
 describe('getBlob', () => {
   afterEach(() => {
     vi.unstubAllGlobals();

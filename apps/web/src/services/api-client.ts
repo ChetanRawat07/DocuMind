@@ -45,6 +45,13 @@ export interface ApiClient {
   ): Promise<z.output<TSchema>>;
   /** Fetches a binary response, such as a document file. */
   getBlob(path: string, options?: { signal?: AbortSignal }): Promise<Blob>;
+  /** Sends `body` as JSON and validates the response. */
+  send<TSchema extends z.ZodType>(
+    method: 'POST' | 'PUT',
+    path: string,
+    body: unknown,
+    schema: TSchema,
+  ): Promise<z.output<TSchema>>;
   delete(path: string): Promise<void>;
 }
 
@@ -121,6 +128,21 @@ export function createApiClient(auth: AuthClient): ApiClient {
         }),
       );
       return response.blob();
+    },
+
+    async send(method, path, body, schema) {
+      const response = await withSession((token) =>
+        fetch(`${API_BASE_PATH}${path}`, {
+          method,
+          headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        }),
+      );
+      return schema.parse(await response.json());
     },
 
     async delete(path) {

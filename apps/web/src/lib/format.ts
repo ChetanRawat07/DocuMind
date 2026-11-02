@@ -24,6 +24,36 @@ export function formatDate(iso: string, locale?: string): string {
   return new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(new Date(iso));
 }
 
+/**
+ * "20 Oct 2026" for a calendar date ("2026-10-20"). Formatted in UTC, where
+ * the string is parsed, so the day does not shift with the viewer's timezone.
+ */
+export function formatCalendarDate(isoDate: string, locale?: string): string {
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: 'UTC' }).format(
+    new Date(isoDate),
+  );
+}
+
+/** "₹58,200.00" with a known ISO currency code, otherwise "58,200.00". */
+export function formatAmount(value: number, currency: string | null, locale?: string): string {
+  const plain = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+  if (currency) {
+    try {
+      return new Intl.NumberFormat(locale, { ...plain, style: 'currency', currency }).format(value);
+    } catch {
+      // Not a currency the browser knows; show the number alone.
+    }
+  }
+  return new Intl.NumberFormat(locale, plain).format(value);
+}
+
+/** "72%" for 0.72. */
+export function formatPercent(fraction: number, locale?: string): string {
+  return new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 0 }).format(
+    fraction,
+  );
+}
+
 /** "29 Oct 2026, 10:00". */
 export function formatDateTime(iso: string, locale?: string): string {
   return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(
