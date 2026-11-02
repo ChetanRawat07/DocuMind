@@ -5,6 +5,11 @@ import { AuditLogsRepository } from '../audit/audit-logs.repository.js';
 import { DATABASE } from '../database/database.module.js';
 import type { DatabaseExecutor } from '../database/database.types.js';
 import {
+  type EnqueueResult,
+  type ProcessingJob,
+  ProcessingJobsRepository,
+} from '../jobs/processing-jobs.repository.js';
+import {
   ObjectNotFoundError,
   ObjectStorage,
   type StoredObject,
@@ -12,6 +17,9 @@ import {
 import { documentStorageKey } from '../storage/storage-key.js';
 import { type Document, DocumentsRepository } from './documents.repository.js';
 import { validateUpload } from './upload-validation.js';
+
+/** Jobs shown in a document's history; older ones stay in the table. */
+const JOB_HISTORY_LIMIT = 20;
 
 /**
  * Uploads and deletions span two systems, object storage and PostgreSQL, with
@@ -24,6 +32,10 @@ import { validateUpload } from './upload-validation.js';
  *
  * What remains possible is an orphaned object (a crash between the two
  * steps), which costs storage but exposes nothing: no row references it.
+ *
+ * The processing job is created in the document's transaction (ADR-005), so
+ * a stored document is always queued: there is no window in which it exists
+ * without a job.
  */
 @Injectable()
 export class DocumentsService {
@@ -34,6 +46,7 @@ export class DocumentsService {
     private readonly documents: DocumentsRepository,
     private readonly auditLogs: AuditLogsRepository,
     private readonly storage: ObjectStorage,
+    private readonly jobs: ProcessingJobsRepository,
   ) {}
 
   /** Validates and stores a file for `ownerId`. Throws UploadRejectedError for an unacceptable file. */
@@ -53,7 +66,7 @@ export class DocumentsService {
     await this.storage.put(storageKey, file.content, mimeType);
     try {
       return await this.db.transaction().execute(async (trx) => {
-        const document = await this.documents.create(
+        await this.documents.create(
           {
             id: documentId,
             ownerId,
@@ -64,6 +77,8 @@ export class DocumentsService {
           },
           trx,
         );
+        const { job } = await this.jobs.enqueue(documentId, trx);
+        const document = await this.documents.setStatus(documentId, 'queued', trx);
         await this.auditLogs.append(
           {
             actor: { type: 'user', userId: ownerId },
@@ -72,11 +87,12 @@ export class DocumentsService {
             resourceId: documentId,
             requestId: null,
             // No filename: audit entries outlive the document and keep only what is needed.
-            metadata: { mimeType, sizeBytes: file.content.length },
+            metadata: { mimeType, sizeBytes: file.content.length, jobId: job.id },
           },
           trx,
         );
-        return document;
+        // Inserted in this transaction, so it exists.
+        return document as Document;
       });
     } catch (error) {
       await this.removeObject(storageKey, 'after a failed upload');
@@ -127,6 +143,46 @@ export class DocumentsService {
       throw error;
     }
     return { document, content };
+  }
+
+  /**
+   * Queues the owner's failed (or never queued) document again. Idempotent:
+   * when the document is already queued or processing, its active job is
+   * returned instead of a new one, so a repeated request is harmless.
+   * Returns `already_processed` for a document in review or completed, and
+   * null when the owner has no such document.
+   */
+  async requestProcessing(
+    ownerId: string,
+    documentId: string,
+  ): Promise<EnqueueResult | 'already_processed' | null> {
+    return this.db.transaction().execute(async (trx) => {
+      // The conditional update locks the row, so concurrent requests queue it once.
+      if (await this.documents.requeueForOwner(ownerId, documentId, trx)) {
+        const result = await this.jobs.enqueue(documentId, trx);
+        await this.auditLogs.append(
+          {
+            actor: { type: 'user', userId: ownerId },
+            action: 'document.processing_requested',
+            resourceType: 'document',
+            resourceId: documentId,
+            requestId: null,
+            metadata: { jobId: result.job.id },
+          },
+          trx,
+        );
+        return result;
+      }
+      if (!(await this.documents.findByIdForOwner(ownerId, documentId, trx))) return null;
+      const active = await this.jobs.findActiveForDocument(documentId, trx);
+      return active ? { job: active, created: false } : 'already_processed';
+    });
+  }
+
+  /** The owner's document's recent jobs, newest first, or null if the owner has no such document. */
+  async listJobs(ownerId: string, documentId: string): Promise<ProcessingJob[] | null> {
+    if (!(await this.documents.findByIdForOwner(ownerId, documentId))) return null;
+    return this.jobs.listForDocument(documentId, JOB_HISTORY_LIMIT);
   }
 
   /** Deletes the owner's document and its file. Returns false if the owner has no such document. */

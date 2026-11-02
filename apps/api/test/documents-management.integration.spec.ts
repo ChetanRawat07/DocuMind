@@ -135,7 +135,7 @@ describe('document search, filters and file access (HTTP)', () => {
     });
 
     it('filters by status and classification', async () => {
-      expect((await listNames(alice, 'status=uploaded&type=unclassified')).names).toHaveLength(4);
+      expect((await listNames(alice, 'status=queued&type=unclassified')).names).toHaveLength(4);
       expect((await listNames(alice, 'status=completed')).names).toEqual([]);
       expect((await listNames(alice, 'type=invoice')).names).toEqual([]);
     });

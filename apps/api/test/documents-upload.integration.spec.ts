@@ -8,6 +8,8 @@ import {
   documentListResponseSchema,
   documentSchema,
   MAX_UPLOAD_BYTES,
+  processingJobListResponseSchema,
+  processingJobSchema,
 } from '@documind/shared';
 import { type INestApplication, Logger } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -122,7 +124,7 @@ describe('document upload and deletion (HTTP)', () => {
   });
 
   describe('upload', () => {
-    it('stores the file privately and records the document', async () => {
+    it('stores the file privately and queues the document for processing', async () => {
       const response = await upload(alice, PDF, 'invoice-1023.pdf').expect(201);
 
       const document = documentSchema.parse(response.body);
@@ -131,10 +133,15 @@ describe('document upload and deletion (HTTP)', () => {
         mimeType: 'application/pdf',
         sizeBytes: PDF.length,
         documentType: null,
-        status: 'uploaded',
+        status: 'queued',
         processedAt: null,
       });
       expect(response.body).not.toHaveProperty('storageKey');
+      const jobs = await db
+        .selectFrom('processing_jobs')
+        .select(['document_id', 'status'])
+        .execute();
+      expect(jobs).toEqual([{ document_id: document.id, status: 'queued' }]);
 
       const row = await db
         .selectFrom('documents')
@@ -348,6 +355,130 @@ describe('document upload and deletion (HTTP)', () => {
       await http().delete(`/api/v1/documents/${id}`).expect(401);
 
       expect(await documentCount()).toBe(1);
+    });
+  });
+
+  describe('processing jobs', () => {
+    async function uploadedId(token: string): Promise<string> {
+      return documentSchema.parse((await upload(token, PDF, 'a.pdf').expect(201)).body).id;
+    }
+
+    /** What the worker leaves behind when it gives up on a document. */
+    async function failProcessing(documentId: string): Promise<void> {
+      await db
+        .updateTable('processing_jobs')
+        .set({
+          status: 'failed',
+          attempts: 3,
+          finished_at: new Date(),
+          last_error_code: 'ocr_failed',
+        })
+        .where('document_id', '=', documentId)
+        .execute();
+      await db
+        .updateTable('documents')
+        .set({ status: 'failed', processed_at: new Date() })
+        .where('id', '=', documentId)
+        .execute();
+    }
+
+    it("lists a document's jobs with their error codes, newest first", async () => {
+      const id = await uploadedId(alice);
+      await failProcessing(id);
+      await http().post(`/api/v1/documents/${id}/jobs`).set(bearer(alice)).expect(202);
+
+      const response = await http()
+        .get(`/api/v1/documents/${id}/jobs`)
+        .set(bearer(alice))
+        .expect(200);
+
+      const { items } = processingJobListResponseSchema.parse(response.body);
+      expect(items.map((job) => [job.status, job.errorCode])).toEqual([
+        ['queued', null],
+        ['failed', 'ocr_failed'],
+      ]);
+      expect(JSON.stringify(response.body)).not.toContain('lastErrorMessage');
+    });
+
+    it('retries a failed document with a new job', async () => {
+      const id = await uploadedId(alice);
+      await failProcessing(id);
+
+      const response = await http()
+        .post(`/api/v1/documents/${id}/jobs`)
+        .set(bearer(alice))
+        .expect(202);
+
+      expect(processingJobSchema.parse(response.body)).toMatchObject({
+        status: 'queued',
+        attempts: 0,
+      });
+      const document = documentSchema.parse(
+        (await http().get(`/api/v1/documents/${id}`).set(bearer(alice)).expect(200)).body,
+      );
+      expect(document).toMatchObject({ status: 'queued', processedAt: null });
+      expect(await auditActions()).toEqual(['document.uploaded', 'document.processing_requested']);
+    });
+
+    it('queues a document stored before processing existed', async () => {
+      const id = await uploadedId(alice);
+      await db.deleteFrom('processing_jobs').where('document_id', '=', id).execute();
+      await db.updateTable('documents').set({ status: 'uploaded' }).where('id', '=', id).execute();
+
+      await http().post(`/api/v1/documents/${id}/jobs`).set(bearer(alice)).expect(202);
+
+      expect((await db.selectFrom('processing_jobs').select('id').execute()).length).toBe(1);
+    });
+
+    it('returns the active job instead of queueing twice', async () => {
+      const id = await uploadedId(alice);
+      await failProcessing(id);
+
+      const responses = await Promise.all(
+        Array.from({ length: 5 }, () =>
+          http().post(`/api/v1/documents/${id}/jobs`).set(bearer(alice)).expect(202),
+        ),
+      );
+
+      expect(
+        new Set(responses.map((response) => processingJobSchema.parse(response.body).id)).size,
+      ).toBe(1);
+      expect(await auditActions()).toEqual(['document.uploaded', 'document.processing_requested']);
+    });
+
+    it('refuses to reprocess a document that reached review', async () => {
+      const id = await uploadedId(alice);
+      await failProcessing(id);
+      await db
+        .updateTable('documents')
+        .set({ status: 'needs_review' })
+        .where('id', '=', id)
+        .execute();
+
+      const response = await http()
+        .post(`/api/v1/documents/${id}/jobs`)
+        .set(bearer(alice))
+        .expect(409);
+
+      expect(apiErrorResponseSchema.parse(response.body).error.code).toBe('CONFLICT');
+    });
+
+    it("returns 404 for another user's document on both routes", async () => {
+      const id = await uploadedId(alice);
+      await failProcessing(id);
+
+      await http().get(`/api/v1/documents/${id}/jobs`).set(bearer(bob)).expect(404);
+      await http().post(`/api/v1/documents/${id}/jobs`).set(bearer(bob)).expect(404);
+      await http().post(`/api/v1/documents/${randomUUID()}/jobs`).set(bearer(alice)).expect(404);
+
+      expect((await db.selectFrom('processing_jobs').select('id').execute()).length).toBe(1);
+    });
+
+    it('requires authentication', async () => {
+      const id = await uploadedId(alice);
+
+      await http().get(`/api/v1/documents/${id}/jobs`).expect(401);
+      await http().post(`/api/v1/documents/${id}/jobs`).expect(401);
     });
   });
 });

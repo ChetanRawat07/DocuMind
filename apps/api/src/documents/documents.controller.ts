@@ -7,10 +7,13 @@ import {
   documentListQuerySchema,
   type DocumentListResponse,
   MAX_UPLOAD_BYTES,
+  type ProcessingJobDto,
+  type ProcessingJobListResponse,
   UPLOAD_FIELD_NAME,
 } from '@documind/shared';
 import {
   BadRequestException,
+  ConflictException,
   Controller,
   Delete,
   Get,
@@ -33,6 +36,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe.js';
+import type { ProcessingJob } from '../jobs/processing-jobs.repository.js';
 import type { User } from '../users/users.repository.js';
 import { contentDisposition } from './content-disposition.js';
 import { decodeDocumentCursor, encodeDocumentCursor } from './document-cursor.js';
@@ -206,6 +210,40 @@ export class DocumentsController {
     response.status(HttpStatus.INTERNAL_SERVER_ERROR).json(body);
   }
 
+  /** The document's processing history, newest first: progress, retries and failure codes. */
+  @Get(':id/jobs')
+  async jobs(
+    @CurrentUser() user: User,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<ProcessingJobListResponse> {
+    const jobs = await this.documentsService.listJobs(user.id, id);
+    if (!jobs) {
+      throw new NotFoundException('Document not found');
+    }
+    return { items: jobs.map(toProcessingJobDto) };
+  }
+
+  /**
+   * Retries processing of a failed document. 202: the work happens in the
+   * worker. A document that is already queued or processing returns its
+   * current job, so repeating the request is safe.
+   */
+  @Post(':id/jobs')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async process(
+    @CurrentUser() user: User,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<ProcessingJobDto> {
+    const result = await this.documentsService.requestProcessing(user.id, id);
+    if (!result) {
+      throw new NotFoundException('Document not found');
+    }
+    if (result === 'already_processed') {
+      throw new ConflictException('The document has already been processed');
+    }
+    return toProcessingJobDto(result.job);
+  }
+
   /** Same 404 for another user's document and a missing one. */
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
@@ -230,5 +268,20 @@ function toDocumentDto(document: Document): DocumentDto {
     processedAt: document.processedAt?.toISOString() ?? null,
     createdAt: document.createdAt.toISOString(),
     updatedAt: document.updatedAt.toISOString(),
+  };
+}
+
+function toProcessingJobDto(job: ProcessingJob): ProcessingJobDto {
+  return {
+    id: job.id,
+    status: job.status,
+    stage: job.stage,
+    attempts: job.attempts,
+    maxAttempts: job.maxAttempts,
+    errorCode: job.lastErrorCode,
+    availableAt: job.availableAt.toISOString(),
+    startedAt: job.startedAt?.toISOString() ?? null,
+    finishedAt: job.finishedAt?.toISOString() ?? null,
+    createdAt: job.createdAt.toISOString(),
   };
 }
