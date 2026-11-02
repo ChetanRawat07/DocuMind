@@ -25,5 +25,6 @@ schedules for later phases.
 | [014](014-hand-built-ui-kit.md)                | Hand-built UI kit on Tailwind CSS               | Accepted | Phase 3    |
 | [015](015-uploads-through-the-api.md)          | Uploads through the API; storage adapters       | Accepted | Phase 4    |
 | [016](016-file-access-through-the-api.md)      | Document files served through the API           | Accepted | Phase 5    |
+| [017](017-evidence-based-confidence.md)        | Evidence-based extraction confidence            | Accepted | Phase 8    |
 
 New ADRs use [template.md](template.md).

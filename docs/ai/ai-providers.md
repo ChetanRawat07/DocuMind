@@ -72,9 +72,11 @@ const { data, response, prompt } = await generateStructured(provider, template, 
 
 Provider details are handled inside the providers:
 
-- **Ollama context size.** Ollama's default context depends on the version and hardware, and it
-  silently drops prompt text that does not fit. The provider requests `num_ctx: 8192`, so prompts
-  must stay below about 8,000 tokens including the answer.
+- **Ollama context size.** Ollama's default context depends on the version and hardware. The
+  provider requests `num_ctx: 8192`, so prompts must stay below about 8,000 tokens including the
+  answer. By default Ollama silently cuts an overflowing prompt to half the context (seen live:
+  10,718 tokens became 4,098). The provider sends `truncate: false`, so an overflow is an HTTP
+  400 (`invalid_request`, permanent) instead of an answer about part of the document.
 - **Truncated answers.** An Ollama answer cut off by `num_predict` (`done_reason: "length"`) is
   `invalid_output`, not a short answer.
 - **Cloudflare JSON mode.** Cloudflare may return the answer already parsed as an object; it is
@@ -158,6 +160,9 @@ These reduce the risk; none of them eliminates it. A test against the real local
 
 - No streaming and no tool calling. Neither is needed for extraction.
 - English prompts; the local model is small and answers less reliably than the demo model.
+- Number-dense text takes about 1.6 characters per token with `qwen2.5`, so callers budget
+  prompt size in characters conservatively (Phase 8 sends at most 8,000 characters of document
+  text).
 - The Cloudflare provider has been exercised for authentication failure only. A successful call
   needs real credentials.
 - Prompt-injection defenses lower the risk but do not remove it (see above).

@@ -13,7 +13,8 @@ LLM, validates them against schemas and flags low-confidence results for human r
 Built in phases (see `DocuMind_Interview_Ready_Development_Plan.md`).
 **Phases 0 (foundation), 1 (database and data model), 2 (authentication and authorization), 3
 (UI foundation), 4 (document upload and object storage), 5 (document management), 6 (text
-extraction and OCR) and 7 (AI provider abstraction) are complete.** The following exist today:
+extraction and OCR), 7 (AI provider abstraction) and 8 (document classification and structured
+extraction) are complete.** The following exist today:
 
 - NestJS API process with liveness and readiness endpoints, security headers, CORS allow-list and
   a consistent error format.
@@ -52,7 +53,15 @@ extraction and OCR) and 7 (AI provider abstraction) are complete.** The followin
   structured answers are constrained to a JSON Schema and validated with Zod.
   `npm run ai:check` tests the configured provider.
 
-Not built yet: AI extraction, job processing, review workflow, analytics, and the
+- Document classification and structured extraction: the model classifies a document as an
+  invoice, purchase order or contract (or unsupported), then extracts that type's fields with a
+  supporting quote for each. Answers are validated with Zod, checked with business rules (dates,
+  totals, line items) and scored per field from evidence: is the quote really in the document,
+  does it show the value, how good was the OCR. Results are stored per processing job with their
+  issues and prompt versions. Until Phase 9, `npm run analyze -- <documentId>` runs the analysis
+  and prints it without storing it.
+
+Not built yet: job processing, review workflow, analytics, and the
 processing, review, analytics and audit-log screens.
 
 ## Architecture
@@ -68,6 +77,7 @@ both system of record and job queue, and object storage for files. See:
 - [Document uploads and storage](docs/storage/document-uploads.md)
 - [Document management: search, sorting, viewing and downloading](docs/documents/document-management.md)
 - [Text extraction and OCR](docs/processing/text-extraction.md)
+- [Document classification and extraction](docs/processing/document-extraction.md)
 - [AI providers](docs/ai/ai-providers.md)
 
 ## Tech stack
@@ -105,7 +115,7 @@ docs/
   frontend/       Design tokens, components, layout, accessibility
   storage/        Upload validation, storage keys, consistency, R2 setup
   documents/      Search, filters, keyset sorting, file access
-  processing/     Text extraction and OCR
+  processing/     Text extraction, OCR, classification and field extraction
   ai/             AI providers, errors, prompts
 docker-compose.yml  Local infrastructure (PostgreSQL; Ollama with the `ai` profile)
 ```
@@ -163,6 +173,7 @@ Details, including recommended hardening, are in
 | `npm run db:reset`         | Revert all migrations (refused in production)              |
 | `npm run db:seed`          | Insert demo data (idempotent; refused in production)       |
 | `npm run extract -- <id>`  | Extract a document's text now (until Phase 9 automates it) |
+| `npm run analyze -- <id>`  | Classify and extract fields; prints, stores nothing        |
 | `npm run ai:up`            | Start local Ollama (Docker) and download `qwen2.5:3b`      |
 | `npm run ai:check`         | One structured round trip through the configured provider  |
 | `npm run db:codegen`       | Regenerate row types from the migrated database            |

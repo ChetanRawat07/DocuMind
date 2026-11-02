@@ -16,12 +16,14 @@ storage (filesystem adapter locally, S3-compatible adapter for R2), and document
 (search, filters, keyset-paged sorting, detail page, audited view and download streamed through the
 API), and text extraction (pdf.js text layer, tesseract.js OCR for scanned pages, stored per page;
 run manually for now), and the AI provider layer (Ollama locally, Cloudflare Workers AI in the
-demo, chosen by configuration). Not yet implemented: AI extraction, job processing, and the processing, review,
+demo, chosen by configuration), and document classification and structured extraction with
+evidence-based confidence (run manually for now). Not yet implemented: job processing, and the processing, review,
 analytics and audit-log screens.
 
 - Schema, constraints and indexes: [database/schema.md](../database/schema.md)
 - Text extraction and OCR: [processing/text-extraction.md](../processing/text-extraction.md)
 - AI providers: [ai/ai-providers.md](../ai/ai-providers.md)
+- Classification and extraction: [processing/document-extraction.md](../processing/document-extraction.md)
 - Authentication and authorization: [security/authentication.md](../security/authentication.md)
 - Document management: [documents/document-management.md](../documents/document-management.md)
 - Web UI (tokens, components, layout, accessibility): [frontend/ui-foundation.md](../frontend/ui-foundation.md)

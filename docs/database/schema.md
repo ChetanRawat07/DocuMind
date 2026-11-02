@@ -64,8 +64,12 @@ erDiagram
         integer schema_version
         jsonb fields
         double_precision overall_confidence
+        double_precision classification_confidence
+        jsonb validation_issues
         text ai_provider
         text ai_model
+        text classification_prompt "template@version"
+        text extraction_prompt "template@version"
         timestamptz created_at
     }
     audit_logs {
@@ -224,9 +228,15 @@ edits (Phase 10) will be stored separately so the original model output stays au
   (`insertOnce`, tested).
 - Composite FK `(job_id, document_id) → processing_jobs (id, document_id)`: the job must belong to
   the same document. A plain FK on `job_id` could not express this.
-- `fields` must be a JSON object; `overall_confidence` must be within `[0, 1]`.
-- `ai_provider`/`ai_model`/`schema_version` record provenance, so a result can be traced to the
-  model and schema that produced it.
+- `fields` must be a JSON object and `validation_issues` a JSON array; both confidences must be
+  within `[0, 1]`.
+- `ai_provider`, `ai_model`, `schema_version`, `classification_prompt` and `extraction_prompt`
+  record provenance, so a result can be traced to the model, schema and prompt wording that
+  produced it.
+- The Phase 8 columns are `NOT NULL` without defaults: their migration fails on existing rows
+  rather than inventing values for them. See
+  [processing/document-extraction.md](../processing/document-extraction.md) for the content of
+  `fields` and `validation_issues`.
 
 **Queries.** Latest for a document: `WHERE document_id = $1 ORDER BY created_at DESC, id DESC
 LIMIT 1` → `document_extractions_document_id_created_at_id_idx` (no sort step, verified).
@@ -234,7 +244,8 @@ LIMIT 1` → `document_extractions_document_id_created_at_id_idx` (no sort step,
 **Why `jsonb`.** The three document types have different fields, and field-level values carry
 confidence. A table per type, or an entity-attribute-value table, would add joins without adding
 integrity the application's Zod validation does not already provide. The trade-off: the database
-cannot validate the inner shape, so invalid output must be rejected before insert (Phase 8).
+cannot validate the inner shape, so invalid output is rejected before insert: model answers that
+fail the Zod schema never reach `save` (Phase 8).
 
 ### document_texts and document_text_pages
 
