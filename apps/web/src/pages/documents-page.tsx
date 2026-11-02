@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router';
 import { DocumentFilters } from '../components/documents/document-filters';
 import { DeleteDocumentButton } from '../components/documents/delete-document-button';
 import { DocumentTable } from '../components/documents/document-table';
+import { LoadMore } from '../components/documents/load-more';
 import { UploadPanel } from '../components/documents/upload-panel';
 import { Button } from '../components/ui/button';
 import { Card, CardHeader } from '../components/ui/card';
@@ -83,27 +84,7 @@ function DocumentList({
           <DeleteDocumentButton document={document} onDeleted={list.remove} />
         )}
       />
-      {list.hasMore || list.moreStatus === 'error' ? (
-        <div className="flex flex-col items-center gap-2 border-t border-gray-100 px-5 py-4">
-          {list.moreStatus === 'error' ? (
-            <p role="alert" className="text-xs text-red-700">
-              Could not load more documents.
-            </p>
-          ) : null}
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={list.moreStatus === 'loading'}
-            onClick={() => void list.loadMore()}
-          >
-            {list.moreStatus === 'loading'
-              ? 'Loading…'
-              : list.moreStatus === 'error'
-                ? 'Try again'
-                : 'Load more'}
-          </Button>
-        </div>
-      ) : null}
+      <LoadMore list={list} />
     </>
   );
 }
