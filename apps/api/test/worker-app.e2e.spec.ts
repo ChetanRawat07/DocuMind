@@ -9,7 +9,7 @@ describe('Worker application context', () => {
     const config = loadConfig({
       NODE_ENV: 'test',
       WORKER_POLL_INTERVAL_MS: '60000',
-      // The pool connects lazily and the skeleton worker never queries.
+      // Nothing listens on port 1: each poll fails fast and is logged, and shutdown must still be quick.
       DATABASE_URL: 'postgres://user:password@127.0.0.1:1/documind',
       SUPABASE_URL: 'https://abcdefghijklmnopqrst.supabase.co',
     });

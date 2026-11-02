@@ -25,9 +25,8 @@ export interface TextExtractionSummary {
 }
 
 /**
- * Extracts a stored document's text and saves it. This is the processing
- * step Phase 9's worker runs for a job; for now it is started by hand with
- * `npm run extract -- <documentId>`.
+ * Extracts a stored document's text and saves it. The worker runs it as the
+ * first step of a job; `npm run extract -- <documentId>` runs it by hand.
  *
  * Throws TextExtractionError when the file cannot be read (see `permanent`
  * for whether a retry can help). Returns null when the document no longer

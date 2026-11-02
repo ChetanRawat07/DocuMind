@@ -3,6 +3,7 @@ import type { AppConfig } from '../config/app-config.js';
 import { AppConfigModule } from '../config/app-config.module.js';
 import { DatabaseModule } from '../database/database.module.js';
 import { SHARED_FEATURE_MODULES } from '../shared-feature-modules.js';
+import { DocumentProcessor } from './document-processor.js';
 import { WorkerService } from './worker.service.js';
 
 /** Root module of the worker process. Imports no HTTP controllers. */
@@ -16,7 +17,7 @@ export class WorkerModule {
         DatabaseModule.forRoot('documind-worker'),
         ...SHARED_FEATURE_MODULES,
       ],
-      providers: [WorkerService],
+      providers: [DocumentProcessor, WorkerService],
     };
   }
 }

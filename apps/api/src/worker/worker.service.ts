@@ -7,22 +7,27 @@ import {
 } from '@nestjs/common';
 import type { AppConfig } from '../config/app-config.js';
 import { APP_CONFIG } from '../config/app-config.module.js';
+import { DocumentProcessor } from './document-processor.js';
 import { PollingLoop } from './polling-loop.js';
 
 /**
  * Owns the worker's poll loop and ties it to the Nest application lifecycle.
  * The loop stops in beforeApplicationShutdown, which Nest runs before
- * onApplicationShutdown closes the database pool, so an in-flight tick can
- * still use the database.
+ * onApplicationShutdown closes the database pool, so an in-flight job can
+ * still use the database. A job can take minutes; if the process is killed
+ * before it finishes, its lease expires and another worker retries it.
  */
 @Injectable()
 export class WorkerService implements OnApplicationBootstrap, BeforeApplicationShutdown {
   private readonly logger = new Logger(WorkerService.name);
   private readonly loop: PollingLoop;
 
-  constructor(@Inject(APP_CONFIG) config: AppConfig) {
+  constructor(
+    @Inject(APP_CONFIG) config: AppConfig,
+    private readonly processor: DocumentProcessor,
+  ) {
     this.loop = new PollingLoop({
-      tick: () => this.pollOnce(),
+      tick: () => this.processor.runNext(),
       idleDelayMs: config.worker.pollIntervalMs,
       onError: (error) => {
         this.logger.error(
@@ -35,20 +40,12 @@ export class WorkerService implements OnApplicationBootstrap, BeforeApplicationS
 
   onApplicationBootstrap(): void {
     this.loop.start();
-    this.logger.log('Worker poll loop started');
+    this.logger.log(`Worker poll loop started as ${this.processor.workerId}`);
   }
 
   async beforeApplicationShutdown(signal?: string): Promise<void> {
     this.logger.log(`Stopping worker poll loop${signal ? ` (${signal})` : ''}`);
     await this.loop.stop();
     this.logger.log('Worker poll loop stopped');
-  }
-
-  /**
-   * Skeleton only. Phase 9 replaces this with claiming one job from the
-   * PostgreSQL job table (FOR UPDATE SKIP LOCKED) and processing it.
-   */
-  private pollOnce(): Promise<boolean> {
-    return Promise.resolve(false);
   }
 }

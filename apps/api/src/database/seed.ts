@@ -97,7 +97,7 @@ runEntrypoint('seed', async () => {
             status: 'failed',
             stage: 'ocr',
             attempts: 3,
-            last_error_code: 'OCR_FAILED',
+            last_error_code: 'ocr_failed',
             last_error_message: 'No readable text found on any page',
             started_at: new Date('2026-10-22T08:00:05.000Z'),
             finished_at: new Date('2026-10-22T08:03:00.000Z'),

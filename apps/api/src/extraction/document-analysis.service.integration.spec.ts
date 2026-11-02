@@ -1,8 +1,15 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { insertDocument, insertJob, insertUser } from '../../test/support/factories.js';
+import {
+  classifiedAs,
+  field,
+  PO_ANSWER,
+  PO_TEXT,
+  ScriptedProvider,
+} from '../../test/support/scripted-ai.js';
 import { createTestDatabase, truncateAllTables } from '../../test/support/test-database.js';
 import { AiProviderError } from '../ai/ai-error.js';
-import { AiProvider, type AiRequest, type AiResponse } from '../ai/ai-provider.js';
+import type { AiProvider } from '../ai/ai-provider.js';
 import { AuditLogsRepository } from '../audit/audit-logs.repository.js';
 import type { DatabaseExecutor } from '../database/database.types.js';
 import { DocumentsRepository } from '../documents/documents.repository.js';
@@ -13,59 +20,6 @@ import {
   type ExtractedAnalysis,
 } from './document-analysis.service.js';
 import { DocumentExtractionsRepository } from './document-extractions.repository.js';
-
-const PO_TEXT = [
-  'PURCHASE ORDER',
-  'PO Number: PO-7781',
-  'Buyer: Globex Ltd',
-  'Supplier: Acme GmbH',
-  'Order date: 2026-10-01',
-  'Widget A  4 x 25.00  100.00',
-  'Total: 100.00 USD',
-].join('\n');
-
-const field = (value: string | number | null, evidence: string | null) => ({ value, evidence });
-const PO_ANSWER = {
-  fields: {
-    poNumber: field('PO-7781', 'PO Number: PO-7781'),
-    buyerName: field('Globex Ltd', 'Buyer: Globex Ltd'),
-    supplierName: field('Acme GmbH', 'Supplier: Acme GmbH'),
-    orderDate: field('2026-10-01', 'Order date: 2026-10-01'),
-    deliveryDate: field(null, null),
-    currency: field('USD', 'Total: 100.00 USD'),
-    totalAmount: field(100, 'Total: 100.00 USD'),
-  },
-  lineItems: [{ description: 'Widget A', quantity: 4, unitPrice: 25, amount: 100 }],
-};
-
-/** Answers each call with the next scripted text and records the requests. */
-class ScriptedProvider extends AiProvider {
-  readonly name = 'scripted';
-  readonly model = 'scripted-model';
-  readonly requests: AiRequest[] = [];
-  private readonly answers: string[];
-
-  constructor(...answers: unknown[]) {
-    super();
-    this.answers = answers.map((answer) =>
-      typeof answer === 'string' ? answer : JSON.stringify(answer),
-    );
-  }
-
-  generate(request: AiRequest): Promise<AiResponse> {
-    this.requests.push(request);
-    const text = this.answers.shift();
-    if (text === undefined) throw new Error('Unexpected AI call');
-    return Promise.resolve({
-      text,
-      provider: this.name,
-      model: this.model,
-      inputTokens: 1,
-      outputTokens: 1,
-      durationMs: 1,
-    });
-  }
-}
 
 describe('DocumentAnalysisService', () => {
   let db: DatabaseExecutor;
@@ -89,11 +43,6 @@ describe('DocumentAnalysisService', () => {
       durationMs: 5,
       engine: 'test',
     });
-
-  const classifiedAs = (documentType: string, evidence: string | null) => ({
-    documentType,
-    evidence,
-  });
 
   async function analyzePurchaseOrder(): Promise<ExtractedAnalysis> {
     await storeText(PO_TEXT);

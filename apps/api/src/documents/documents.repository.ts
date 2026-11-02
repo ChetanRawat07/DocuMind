@@ -5,6 +5,7 @@ import {
   type DocumentStatus,
   type DocumentType,
   MAX_DOCUMENT_PAGE_SIZE,
+  PROCESSED_DOCUMENT_STATUSES,
   UNCLASSIFIED_DOCUMENT_TYPE,
 } from '@documind/shared';
 import { Inject, Injectable } from '@nestjs/common';
@@ -139,6 +140,47 @@ export class DocumentsRepository {
   }
 
   /**
+   * Moves a document through its lifecycle for background processing, like
+   * `findByIdForProcessing`. Sets `processed_at` exactly when the status is an
+   * outcome, as the schema requires. Returns null when the document is gone.
+   */
+  async setStatus(
+    documentId: string,
+    status: DocumentStatus,
+    executor = this.db,
+  ): Promise<Document | null> {
+    const row = await executor
+      .updateTable('documents')
+      .set({ status, processed_at: isProcessed(status) ? sql<Date>`now()` : null })
+      .where('id', '=', documentId)
+      .returningAll()
+      .executeTakeFirst();
+    return row ? toDocument(row) : null;
+  }
+
+  /**
+   * Marks the owner's document queued again, but only from a status a user
+   * may retry: `failed`, or `uploaded` (stored before processing existed).
+   * Documents in review or completed are refused, so a retry can never
+   * replace reviewed results. Returns null when nothing was changed.
+   */
+  async requeueForOwner(
+    ownerId: string,
+    documentId: string,
+    executor = this.db,
+  ): Promise<Document | null> {
+    const row = await executor
+      .updateTable('documents')
+      .set({ status: 'queued', processed_at: null })
+      .where('id', '=', documentId)
+      .where('user_id', '=', ownerId)
+      .where('status', 'in', ['uploaded', 'failed'])
+      .returningAll()
+      .executeTakeFirst();
+    return row ? toDocument(row) : null;
+  }
+
+  /**
    * Keyset pagination in any supported order. `WHERE (sort_value, id) > cursor`
    * (or `<` for descending) continues right after the last row seen, so rows
    * inserted meanwhile never shift page borders the way OFFSET does, and the
@@ -250,6 +292,10 @@ function sortValueOf(document: Document, column: DocumentSortColumn): Date | str
 /** Makes `%`, `_` and backslash match literally in a LIKE pattern (backslash is the default escape). */
 export function escapeLikePattern(text: string): string {
   return text.replace(/[\\%_]/g, (character) => `\\${character}`);
+}
+
+function isProcessed(status: DocumentStatus): boolean {
+  return (PROCESSED_DOCUMENT_STATUSES as readonly DocumentStatus[]).includes(status);
 }
 
 function toDocument(row: Selectable<Documents>): Document {

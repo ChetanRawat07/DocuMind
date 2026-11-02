@@ -20,9 +20,10 @@ const PERMANENT: ReadonlySet<TextExtractionFailure> = new Set([
 ]);
 
 /**
- * A document whose text could not be extracted. `permanent` tells the job
- * runner (Phase 9) whether a retry can help: a corrupt or encrypted file
- * fails the same way every time, while an OCR engine failure may not.
+ * A document whose text could not be extracted. `permanent` tells the
+ * worker (src/worker/job-failure.ts) whether a retry can help: a corrupt or
+ * encrypted file fails the same way every time, while an OCR engine failure
+ * may not.
  * Messages describe the file, never its content.
  */
 export class TextExtractionError extends Error {

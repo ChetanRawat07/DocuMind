@@ -17,9 +17,9 @@ const RETRYABLE: ReadonlySet<AiErrorKind> = new Set([
 
 /**
  * Every provider failure, normalized: callers never see provider-specific
- * status codes or bodies. `retryable` drives the job runner's retries
- * (Phase 9); `retryAfterMs` is the provider's own hint, when it gives one.
- * Messages never contain prompt or response text, which may hold document
+ * status codes or bodies. `retryable` drives the worker's retries
+ * (src/worker/job-failure.ts); `retryAfterMs` is the provider's own hint,
+ * when it gives one. Messages never contain prompt or response text, which may hold document
  * content.
  */
 export class AiProviderError extends Error {

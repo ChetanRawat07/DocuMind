@@ -25,8 +25,9 @@ class ExtractTextCliModule {
 }
 
 /**
- * Development tool until the worker runs extraction (Phase 9):
- * `npm run extract -- <documentId>`. Prints counts, never the text itself.
+ * Development tool: `npm run extract -- <documentId>` extracts a document's
+ * text by hand (the worker does it for each job). Prints counts, never the
+ * text itself.
  */
 runEntrypoint('extract-text', async () => {
   const documentId = z.uuid().safeParse(process.argv[2]);

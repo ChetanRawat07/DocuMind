@@ -71,8 +71,8 @@ export type DocumentAnalysis = ExtractedAnalysis | UnsupportedAnalysis;
 /**
  * Classifies a document from its extracted text, extracts the fields of its
  * type and scores them. `analyze` only reads; `save` stores a result for the
- * processing job that produced it. Phase 9's worker runs both; until then
- * `npm run analyze -- <documentId>` runs `analyze` by hand.
+ * processing job that produced it. The worker runs both;
+ * `npm run analyze -- <documentId>` runs `analyze` by hand for development.
  *
  * AI failures surface as AiProviderError. Model output that fails the
  * schema is one of them (`invalid_output`), so it never reaches `save`.
@@ -146,56 +146,71 @@ export class DocumentAnalysisService {
    * document's type, in one transaction. Idempotent per job: a retried save
    * returns the stored extraction. Returns null when the document or job
    * was deleted meanwhile.
+   *
+   * Pass `executor` to save inside the caller's transaction, so the result
+   * commits or rolls back with the caller's other writes (the worker finishes
+   * the job in it). Foreign-key errors then propagate to the caller.
    */
-  async save(jobId: string, analysis: ExtractedAnalysis): Promise<InsertExtractionResult | null> {
+  async save(
+    jobId: string,
+    analysis: ExtractedAnalysis,
+    executor?: DatabaseExecutor,
+  ): Promise<InsertExtractionResult | null> {
+    if (executor) return this.insert(jobId, analysis, executor);
     try {
-      return await this.db.transaction().execute(async (trx) => {
-        const result = await this.extractions.insertOnce(
-          {
-            documentId: analysis.documentId,
-            jobId,
-            documentType: analysis.documentType,
-            schemaVersion: analysis.schemaVersion,
-            // Plain JSON by construction: strings, numbers, nulls and arrays of them.
-            fields: analysis.fields as unknown as JsonObject,
-            overallConfidence: analysis.overallConfidence,
-            classificationConfidence: analysis.classificationConfidence,
-            validationIssues: analysis.issues as unknown as JsonArray,
-            aiProvider: analysis.aiProvider,
-            aiModel: analysis.aiModel,
-            classificationPrompt: analysis.classificationPrompt,
-            extractionPrompt: analysis.extractionPrompt,
-          },
-          trx,
-        );
-        if (!result.created) return result;
-
-        await this.documents.setDocumentType(analysis.documentId, analysis.documentType, trx);
-        await this.auditLogs.append(
-          {
-            actor: { type: 'system' },
-            action: 'document.fields_extracted',
-            resourceType: 'document',
-            resourceId: analysis.documentId,
-            requestId: null,
-            // Scores and issue codes only: audit entries never hold document content.
-            metadata: {
-              jobId,
-              documentType: analysis.documentType,
-              schemaVersion: analysis.schemaVersion,
-              overallConfidence: analysis.overallConfidence,
-              issues: analysis.issues.map((issue) => issue.code),
-              aiProvider: analysis.aiProvider,
-              aiModel: analysis.aiModel,
-            },
-          },
-          trx,
-        );
-        return result;
-      });
+      return await this.db.transaction().execute((trx) => this.insert(jobId, analysis, trx));
     } catch (error) {
       if ((error as { code?: unknown }).code === FOREIGN_KEY_VIOLATION) return null;
       throw error;
     }
+  }
+
+  private async insert(
+    jobId: string,
+    analysis: ExtractedAnalysis,
+    trx: DatabaseExecutor,
+  ): Promise<InsertExtractionResult> {
+    const result = await this.extractions.insertOnce(
+      {
+        documentId: analysis.documentId,
+        jobId,
+        documentType: analysis.documentType,
+        schemaVersion: analysis.schemaVersion,
+        // Plain JSON by construction: strings, numbers, nulls and arrays of them.
+        fields: analysis.fields as unknown as JsonObject,
+        overallConfidence: analysis.overallConfidence,
+        classificationConfidence: analysis.classificationConfidence,
+        validationIssues: analysis.issues as unknown as JsonArray,
+        aiProvider: analysis.aiProvider,
+        aiModel: analysis.aiModel,
+        classificationPrompt: analysis.classificationPrompt,
+        extractionPrompt: analysis.extractionPrompt,
+      },
+      trx,
+    );
+    if (!result.created) return result;
+
+    await this.documents.setDocumentType(analysis.documentId, analysis.documentType, trx);
+    await this.auditLogs.append(
+      {
+        actor: { type: 'system' },
+        action: 'document.fields_extracted',
+        resourceType: 'document',
+        resourceId: analysis.documentId,
+        requestId: null,
+        // Scores and issue codes only: audit entries never hold document content.
+        metadata: {
+          jobId,
+          documentType: analysis.documentType,
+          schemaVersion: analysis.schemaVersion,
+          overallConfidence: analysis.overallConfidence,
+          issues: analysis.issues.map((issue) => issue.code),
+          aiProvider: analysis.aiProvider,
+          aiModel: analysis.aiModel,
+        },
+      },
+      trx,
+    );
+    return result;
   }
 }

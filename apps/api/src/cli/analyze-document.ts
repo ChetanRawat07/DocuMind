@@ -28,10 +28,9 @@ class AnalyzeDocumentCliModule {
 }
 
 /**
- * Development tool until the worker runs analysis (Phase 9):
- * `npm run analyze -- <documentId>`, after `npm run extract`. Prints the
- * extracted fields for the developer and stores nothing: extractions are
- * saved only for a processing job.
+ * Development tool: `npm run analyze -- <documentId>`, once the document's
+ * text exists. Prints the extracted fields for the developer and stores
+ * nothing: extractions are saved only by the worker, for a processing job.
  */
 runEntrypoint('analyze-document', async () => {
   const documentId = z.uuid().safeParse(process.argv[2]);
