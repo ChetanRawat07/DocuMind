@@ -10,6 +10,7 @@ import { ForgotPasswordPage } from './pages/forgot-password-page';
 import { LoginPage } from './pages/login-page';
 import { NotFoundPage } from './pages/not-found-page';
 import { ResetPasswordPage } from './pages/reset-password-page';
+import { ReviewPage } from './pages/review-page';
 import { SettingsPage } from './pages/settings-page';
 import { SignupPage } from './pages/signup-page';
 
@@ -38,7 +39,7 @@ export function App() {
           path={NAV_ITEMS.processing.path}
           element={<ComingSoonPage item={NAV_ITEMS.processing} />}
         />
-        <Route path={NAV_ITEMS.review.path} element={<ComingSoonPage item={NAV_ITEMS.review} />} />
+        <Route path={NAV_ITEMS.review.path} element={<ReviewPage />} />
         <Route
           path={NAV_ITEMS.analytics.path}
           element={<ComingSoonPage item={NAV_ITEMS.analytics} />}

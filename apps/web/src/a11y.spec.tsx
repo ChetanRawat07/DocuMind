@@ -4,6 +4,7 @@ import axe from 'axe-core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fakeSession } from './test/fake-auth-client';
 import { stubXhr, waitForRequest } from './test/fake-xhr';
+import { testExtraction } from './test/extraction-fixture';
 import { renderApp, stubApi, testDocument } from './test/render-app';
 
 /**
@@ -97,6 +98,35 @@ describe('accessibility', () => {
     });
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: `Delete ${document.originalFilename}` }));
+
+    await expectNoViolations();
+  });
+
+  it('the detail page reviewing an extraction, with a field being edited, has no violations', async () => {
+    const document = testDocument({ status: 'needs_review' });
+    Object.assign(URL, { createObjectURL: () => 'blob:test/1', revokeObjectURL: () => undefined });
+    stubApi((url) => {
+      if (url === `/api/v1/documents/${document.id}`) return Response.json(document);
+      if (url.endsWith('/extraction')) return Response.json(testExtraction());
+      if (url.includes('/content?')) return new Response(new Blob(['x']));
+      return undefined;
+    });
+    renderApp(`/documents/${document.id}`, fakeSession());
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Edit Total' }));
+    await user.click(screen.getByRole('button', { name: 'Reject' }));
+
+    await expectNoViolations();
+  });
+
+  it('the review queue has no violations', async () => {
+    stubApi((url) =>
+      url.includes('status=needs_review')
+        ? Response.json({ items: [testDocument({ status: 'needs_review' })], nextCursor: null })
+        : undefined,
+    );
+    renderApp('/review', fakeSession());
+    await screen.findByRole('link', { name: /^Review / });
 
     await expectNoViolations();
   });
