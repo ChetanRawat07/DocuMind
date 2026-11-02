@@ -61,13 +61,19 @@ extraction) and 9 (asynchronous queue and workers) are complete.** The following
 
 - Asynchronous processing: upload queues a job in the same transaction; the worker claims it
   (`FOR UPDATE SKIP LOCKED`, safe with several workers), extracts text, then classifies and extracts
-  fields, and sends the document to review. Failures are classified as retryable or permanent;
+  fields. Failures are classified as retryable or permanent;
   retries back off exponentially with jitter, up to three attempts, and permanent failures end in a
   dead letter that users can retry. A crashed worker's job is taken over when its lease expires,
   and stale workers' writes are fenced out. The job history is available per document.
 
-Not built yet: review workflow, analytics, and the processing, review, analytics and audit-log
-screens.
+- Review workflow: confident extractions (overall ≥ 0.90, no issues) complete on their own; the
+  rest wait in a review queue. On the document page each flagged field shows why and the quoted
+  passage, and is confirmed or corrected; approval is refused until every flagged field is
+  checked. Corrections are stored apart from the model's output; rejected documents can be
+  reprocessed. Every action is audited without values
+  ([details](docs/processing/review-workflow.md)).
+
+Not built yet: analytics, and the processing, analytics and audit-log screens.
 
 ## Architecture
 
@@ -241,18 +247,22 @@ with a message naming the variable.
 
 ## API
 
-| Method | Path                            | Auth   | Description                                                                                                                                                      |
-| ------ | ------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/v1/health`                | None   | Liveness: `{ "status": "ok", "timestamp" }`                                                                                                                      |
-| GET    | `/api/v1/health/ready`          | None   | Readiness: same body when the database answers; 503 otherwise                                                                                                    |
-| GET    | `/api/v1/me`                    | Bearer | The signed-in user; creates the user record on first call                                                                                                        |
-| GET    | `/api/v1/documents`             | Bearer | The caller's documents: `q`, `status`, `type`, `format`, `sort`, `limit` (1–100, default 20), opaque `cursor` ([details](docs/documents/document-management.md)) |
-| GET    | `/api/v1/documents/:id`         | Bearer | One of the caller's documents; 404 for other users' and unknown ids                                                                                              |
-| GET    | `/api/v1/documents/:id/content` | Bearer | The file; `disposition=inline` (preview) or `attachment` (default, download); audited; 404 if not yours                                                          |
-| POST   | `/api/v1/documents`             | Bearer | Multipart upload, one `file` part (PDF/PNG/JPEG ≤ 10 MB); 201 with the document, queued for processing; 413/415/400 on rejection                                 |
-| DELETE | `/api/v1/documents/:id`         | Bearer | Deletes the document and its file; 204, or 404 if it is not yours                                                                                                |
-| GET    | `/api/v1/documents/:id/jobs`    | Bearer | The document's 20 most recent processing jobs: status, stage, attempts, error code ([details](docs/processing/job-queue.md))                                     |
-| POST   | `/api/v1/documents/:id/jobs`    | Bearer | Retries a failed document: 202 with the queued job (the active job if one exists); 409 once in review or completed                                               |
+| Method | Path                                             | Auth   | Description                                                                                                                                                      |
+| ------ | ------------------------------------------------ | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/v1/health`                                 | None   | Liveness: `{ "status": "ok", "timestamp" }`                                                                                                                      |
+| GET    | `/api/v1/health/ready`                           | None   | Readiness: same body when the database answers; 503 otherwise                                                                                                    |
+| GET    | `/api/v1/me`                                     | Bearer | The signed-in user; creates the user record on first call                                                                                                        |
+| GET    | `/api/v1/documents`                              | Bearer | The caller's documents: `q`, `status`, `type`, `format`, `sort`, `limit` (1–100, default 20), opaque `cursor` ([details](docs/documents/document-management.md)) |
+| GET    | `/api/v1/documents/:id`                          | Bearer | One of the caller's documents; 404 for other users' and unknown ids                                                                                              |
+| GET    | `/api/v1/documents/:id/content`                  | Bearer | The file; `disposition=inline` (preview) or `attachment` (default, download); audited; 404 if not yours                                                          |
+| POST   | `/api/v1/documents`                              | Bearer | Multipart upload, one `file` part (PDF/PNG/JPEG ≤ 10 MB); 201 with the document, queued for processing; 413/415/400 on rejection                                 |
+| DELETE | `/api/v1/documents/:id`                          | Bearer | Deletes the document and its file; 204, or 404 if it is not yours                                                                                                |
+| GET    | `/api/v1/documents/:id/jobs`                     | Bearer | The document's 20 most recent processing jobs: status, stage, attempts, error code ([details](docs/processing/job-queue.md))                                     |
+| POST   | `/api/v1/documents/:id/jobs`                     | Bearer | Reprocesses a failed or rejected document: 202 with the queued job (the active job if one exists); 409 once in review or completed                               |
+| GET    | `/api/v1/documents/:id/extraction`               | Bearer | Latest extraction with field scores, flags and review state ([details](docs/processing/review-workflow.md))                                                      |
+| PUT    | `/api/v1/documents/:id/extraction/fields/:field` | Bearer | Confirms or corrects one field while the document is in review                                                                                                   |
+| POST   | `/api/v1/documents/:id/extraction/approve`       | Bearer | Completes the document; 409 while flagged fields are unchecked                                                                                                   |
+| POST   | `/api/v1/documents/:id/extraction/reject`        | Bearer | Marks the document `rejected`, with an optional reason                                                                                                           |
 
 All errors use `{ "error": { "code": "<HTTP_STATUS_NAME>", "message": "…" } }`. Server errors
 never include internal details. Authenticated endpoints return 401 (with `WWW-Authenticate`) for a

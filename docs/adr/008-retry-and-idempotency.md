@@ -68,5 +68,5 @@ SKIP LOCKED LIMIT 1)`. The claim increments `attempts` and sets a lease.
 - Answers to the "what if…" questions are in
   [docs/processing/job-queue.md](../processing/job-queue.md).
 - Running the worker inside the API process on the free demo host (ADR-009) is wired up in Phase 16.
-- Phase 10 decides which extractions may skip review. Until then every extraction goes to
-  `needs_review`.
+- Phase 10 lets confident extractions complete without review, in the same transaction
+  ([ADR-018](018-human-review-workflow.md)).

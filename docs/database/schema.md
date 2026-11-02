@@ -3,7 +3,7 @@
 PostgreSQL 17 is the system of record (ADR-002) and the job queue (ADR-005). Data access uses
 Kysely with hand-written SQL migrations (ADR-012).
 
-- Migration: `apps/api/src/database/migrations/20261029120000_initial_schema.ts`
+- Migrations: `apps/api/src/database/migrations/` (initial schema `20261029120000_initial_schema.ts`)
 - Generated row types: `apps/api/src/database/generated/database.ts` (`npm run db:codegen`)
 - Repositories: `apps/api/src/{users,documents,jobs,extraction,audit}/*.repository.ts`
 
@@ -15,6 +15,8 @@ erDiagram
     documents ||--o{ processing_jobs : "processed by (CASCADE)"
     documents ||--o{ document_extractions : "has versions (CASCADE)"
     processing_jobs ||--o| document_extractions : "produces at most one (CASCADE)"
+    document_extractions ||--o| extraction_reviews : "reviewed in (CASCADE)"
+    users ||--o{ extraction_reviews : "decided_by"
     users ||..o{ audit_logs : "actor_user_id (no FK)"
     documents ||..o{ audit_logs : "resource_id (no FK)"
 
@@ -71,6 +73,16 @@ erDiagram
         text classification_prompt "template@version"
         text extraction_prompt "template@version"
         timestamptz created_at
+    }
+    extraction_reviews {
+        uuid extraction_id PK "FK"
+        jsonb fields "reviewed values"
+        text decision "approved | rejected"
+        uuid decided_by FK "null when automatic"
+        timestamptz decided_at
+        text reject_reason
+        timestamptz created_at
+        timestamptz updated_at
     }
     audit_logs {
         bigint id PK "identity"
@@ -133,9 +145,11 @@ over HTTP with 8 concurrent requests).
 storage objects can never be orphaned by a cascading delete that storage does not know about.
 
 **Status model.** `documents.status` is the coarse, user-facing lifecycle (`uploaded`, `queued`,
-`processing`, `needs_review`, `completed`, `failed`). Fine-grained pipeline progress (OCR,
+`processing`, `needs_review`, `completed`, `failed`, `rejected`). Fine-grained pipeline progress (OCR,
 classification, …) lives on `processing_jobs.stage`. `processed_at` is set exactly when the status
-is an outcome (`needs_review`, `completed`, `failed`), enforced by a `CHECK`.
+is an outcome (`needs_review`, `completed`, `failed`, `rejected`), enforced by a `CHECK`.
+`rejected` (Phase 10) means a reviewer found the extraction unusable; it is not a processing
+failure.
 
 **Queries.**
 
@@ -220,7 +234,8 @@ consider pruning or archiving finished jobs.
 
 **Why it exists.** Structured AI output after schema validation (Phase 8). Each successful job
 produces one immutable version; reprocessing adds a new version rather than overwriting. Review
-edits (Phase 10) will be stored separately so the original model output stays auditable.
+edits are stored separately, in `extraction_reviews`, so the original model output stays
+auditable.
 
 **Invariants.**
 
@@ -247,6 +262,27 @@ confidence. A table per type, or an entity-attribute-value table, would add join
 integrity the application's Zod validation does not already provide. The trade-off: the database
 cannot validate the inner shape, so invalid output is rejected before insert: model answers that
 fail the Zod schema never reach `save` (Phase 8).
+
+### extraction_reviews
+
+**Why it exists.** A person's work on one extraction (Phase 10, ADR-018): confirmed or corrected
+field values and the decision. Kept apart from `document_extractions` so the model's output stays
+unchanged. See [processing/review-workflow.md](../processing/review-workflow.md).
+
+**Design.**
+
+- Primary key and cascading FK `extraction_id`: at most one review per extraction, deleted with it.
+- `fields` is a JSON object, `{"field": {"value": …}}`. Values are document content.
+- `decision` is `approved` or `rejected`. `decided_at` is set exactly when there is a decision
+  (`extraction_reviews_decided_at_matches_decision`).
+- `decided_by` is the reviewing user, or null for an automatic approval. A rejection always has a
+  reviewer, and a reviewer implies a decision (`extraction_reviews_decided_by_matches_decision`).
+- `reject_reason` (1–500 characters) only on a rejection.
+- Row-level security enabled, like every table (a test checks the catalog for all of them).
+
+**Queries.** By primary key only: the review of the latest extraction. Field writes are
+`INSERT … ON CONFLICT (extraction_id) DO UPDATE SET fields = fields || excluded.fields`; a
+decision updates only `WHERE decision IS NULL`.
 
 ### document_texts and document_text_pages
 
@@ -280,8 +316,10 @@ fail the Zod schema never reach `save` (Phase 8).
   the repository).
 - Actions written so far: `user.registered`, `document.uploaded`, `document.deleted`,
   `document.viewed` and `document.downloaded` (each file access, recorded before the first byte is
-  sent), and `document.text_extracted` (actor `system`). Document entries carry only types, sizes
-  and counts, never the filename or text.
+  sent), and `document.text_extracted` (actor `system`). Processing and review add
+  `document.processing_requested`, `document.processing_failed`, `document.fields_extracted`,
+  `document.field_reviewed`, `document.approved` and `document.rejected`. Document entries carry
+  only types, sizes, counts and field names, never the filename, values or text.
 
 **Queries.** A resource's timeline → `audit_logs_resource_occurred_at_id_idx`; a user's activity →
 `audit_logs_actor_user_id_occurred_at_idx` (partial: system actions excluded).
@@ -305,6 +343,7 @@ await db.transaction().execute(async (trx) => {
 | --------------------------------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------ |
 | Create document + enqueue job (4, 9)                                  | Yes          | Both or neither. This is what removes the dual-write problem (ADR-005). Tested with a forced rollback. |
 | Store extraction + mark job succeeded + update document status (8, 9) | Yes          | A crash in between must not leave a succeeded job without its extraction, or the reverse.              |
+| Review action: lock document, write review, status, audit (10)        | Yes          | The document row lock serializes edits and the decision; the status and the decision change together.  |
 | Single-statement upserts and deletes                                  | No           | One statement is already atomic.                                                                       |
 | Provision user + `user.registered` audit entry (2)                    | Yes          | The audit trail must record every account the system created, and only those.                          |
 | Readiness check                                                       | No           | Read-only `SELECT 1`.                                                                                  |
@@ -330,7 +369,7 @@ Check in Phase 16.
 ## Seed data
 
 `npm run db:seed` inserts a demo user (`demo@documind.local`, id
-`00000000-0000-4000-8000-000000000001`) with three documents (completed invoice with extraction,
+`00000000-0000-4000-8000-000000000001`) with three documents (an invoice in review with an extraction whose total scored 0.72,
 queued contract, failed purchase order), their jobs and audit entries.
 
 - Idempotent: fixed ids with `ON CONFLICT DO NOTHING`.

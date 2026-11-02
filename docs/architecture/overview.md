@@ -3,7 +3,7 @@
 This document describes the architecture **as implemented** and marks planned parts explicitly.
 Decisions and their reasoning live in [the ADRs](../adr/README.md).
 
-## Current state: Phase 9 (asynchronous queue and workers)
+## Current state: Phase 10 (review workflow)
 
 Implemented: repository structure, the API process with liveness and readiness endpoints, the
 worker process skeleton, shared contracts, configuration validation, the PostgreSQL schema with
@@ -18,8 +18,9 @@ API), and text extraction (pdf.js text layer, tesseract.js OCR for scanned pages
 stored per page), and the AI provider layer (Ollama locally, Cloudflare Workers AI in the
 demo, chosen by configuration), and document classification and structured extraction with
 evidence-based confidence, and the job queue: upload enqueues a job, and the worker claims it,
-runs text extraction and AI extraction, and retries, dead-letters or recovers it after a crash.
-Not yet implemented: the review workflow, and the processing, review, analytics and audit-log
+runs text extraction and AI extraction, and retries, dead-letters or recovers it after a crash,
+and the review workflow: confident extractions complete on their own, the rest are reviewed field
+by field, then approved or rejected. Not yet implemented: the processing, analytics and audit-log
 screens.
 
 - Schema, constraints and indexes: [database/schema.md](../database/schema.md)
@@ -27,6 +28,7 @@ screens.
 - AI providers: [ai/ai-providers.md](../ai/ai-providers.md)
 - Classification and extraction: [processing/document-extraction.md](../processing/document-extraction.md)
 - Job queue, retries and the worker: [processing/job-queue.md](../processing/job-queue.md)
+- Review workflow: [processing/review-workflow.md](../processing/review-workflow.md)
 - Authentication and authorization: [security/authentication.md](../security/authentication.md)
 - Document management: [documents/document-management.md](../documents/document-management.md)
 - Web UI (tokens, components, layout, accessibility): [frontend/ui-foundation.md](../frontend/ui-foundation.md)

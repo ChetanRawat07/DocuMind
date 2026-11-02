@@ -30,14 +30,15 @@ upload ──(one transaction)──> document queued + job queued
  needs_review     document queued            document failed
 ```
 
-| Job status  | Meaning                                                    | Document status          |
-| ----------- | ---------------------------------------------------------- | ------------------------ |
-| `queued`    | Waiting; `available_at` is when it may run (retry backoff) | `queued`                 |
-| `running`   | Claimed by `locked_by` until `lease_expires_at`            | `processing`             |
-| `succeeded` | Extraction stored                                          | `needs_review`           |
-| `failed`    | Dead letter: no further attempts                           | `failed` (retry via API) |
+| Job status  | Meaning                                                    | Document status            |
+| ----------- | ---------------------------------------------------------- | -------------------------- |
+| `queued`    | Waiting; `available_at` is when it may run (retry backoff) | `queued`                   |
+| `running`   | Claimed by `locked_by` until `lease_expires_at`            | `processing`               |
+| `succeeded` | Extraction stored                                          | `needs_review`/`completed` |
+| `failed`    | Dead letter: no further attempts                           | `failed` (retry via API)   |
 
-Every extraction goes to `needs_review`; Phase 10 decides which may complete without review.
+A confident extraction (overall ≥ 0.90, no issues) completes on its own; anything else goes to
+`needs_review`. See [review-workflow.md](review-workflow.md).
 
 ## Claiming and fencing
 

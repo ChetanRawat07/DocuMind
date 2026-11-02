@@ -26,5 +26,6 @@ schedules for later phases.
 | [015](015-uploads-through-the-api.md)          | Uploads through the API; storage adapters       | Accepted | Phase 4    |
 | [016](016-file-access-through-the-api.md)      | Document files served through the API           | Accepted | Phase 5    |
 | [017](017-evidence-based-confidence.md)        | Evidence-based extraction confidence            | Accepted | Phase 8    |
+| [018](018-human-review-workflow.md)            | Human review and automatic completion           | Accepted | Phase 10   |
 
 New ADRs use [template.md](template.md).

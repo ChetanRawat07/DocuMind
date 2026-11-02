@@ -7,15 +7,15 @@ is [ADR-016](../adr/016-file-access-through-the-api.md).
 
 ## Listing: `GET /api/v1/documents`
 
-| Parameter | Values                                                                       | Default  |
-| --------- | ---------------------------------------------------------------------------- | -------- |
-| `q`       | Part of the filename, ignoring case; 1–100 characters; blank means no search | none     |
-| `status`  | `uploaded`, `queued`, `processing`, `needs_review`, `completed`, `failed`    | all      |
-| `type`    | `invoice`, `contract`, `purchase_order`, `unclassified`                      | all      |
-| `format`  | `pdf` (application/pdf), `image` (image/png, image/jpeg)                     | all      |
-| `sort`    | `newest`, `oldest`, `name_asc`, `name_desc`, `largest`, `smallest`           | `newest` |
-| `limit`   | 1–100                                                                        | 20       |
-| `cursor`  | `nextCursor` from the previous page, unchanged, with the same `sort`         | none     |
+| Parameter | Values                                                                                | Default  |
+| --------- | ------------------------------------------------------------------------------------- | -------- |
+| `q`       | Part of the filename, ignoring case; 1–100 characters; blank means no search          | none     |
+| `status`  | `uploaded`, `queued`, `processing`, `needs_review`, `completed`, `failed`, `rejected` | all      |
+| `type`    | `invoice`, `contract`, `purchase_order`, `unclassified`                               | all      |
+| `format`  | `pdf` (application/pdf), `image` (image/png, image/jpeg)                              | all      |
+| `sort`    | `newest`, `oldest`, `name_asc`, `name_desc`, `largest`, `smallest`                    | `newest` |
+| `limit`   | 1–100                                                                                 | 20       |
+| `cursor`  | `nextCursor` from the previous page, unchanged, with the same `sort`                  | none     |
 
 Filters combine with AND. Unknown values, a repeated parameter or an over-long search are a 400.
 Every query is scoped to the caller (`WHERE user_id = $owner`), so no filter, search or cursor can

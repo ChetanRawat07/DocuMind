@@ -131,7 +131,7 @@ checked.
 - 0.5 if the text was truncated.
 
 A result is only as reliable as its weakest value. It is a review signal, not a probability. The
-review threshold is set in Phase 10.
+review threshold (0.90) and what happens below it are in [review-workflow.md](review-workflow.md).
 
 ## Prompts and limits
 
