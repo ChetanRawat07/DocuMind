@@ -21,5 +21,23 @@ services:
       timeout: 3s
       retries: 10
 
+  # Local AI model server, started only on request: `npm run ai:up` (profile "ai").
+  # CPU inference; the model is downloaded once into the ollama-models volume.
+  ollama:
+    image: ollama/ollama:0.40.5
+    profiles: ['ai']
+    restart: unless-stopped
+    ports:
+      # Loopback only: the model server has no authentication.
+      - '127.0.0.1:${OLLAMA_PORT:-11434}:11434'
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ['CMD', 'ollama', 'list']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
 volumes:
   postgres-data:
+  ollama-models:
