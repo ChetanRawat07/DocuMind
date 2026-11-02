@@ -1,10 +1,12 @@
 import { type DynamicModule, Module } from '@nestjs/common';
+import { AuditHttpModule } from './audit/audit-http.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import type { AppConfig } from './config/app-config.js';
 import { AppConfigModule } from './config/app-config.module.js';
 import { DatabaseModule } from './database/database.module.js';
 import { DocumentsHttpModule } from './documents/documents-http.module.js';
 import { HealthModule } from './health/health.module.js';
+import { ProcessingHttpModule } from './processing/processing-http.module.js';
 import { ReviewHttpModule } from './review/review-http.module.js';
 import { SHARED_FEATURE_MODULES } from './shared-feature-modules.js';
 import { UsersHttpModule } from './users/users-http.module.js';
@@ -28,6 +30,8 @@ export class AppModule {
         UsersHttpModule,
         DocumentsHttpModule,
         ReviewHttpModule,
+        ProcessingHttpModule,
+        AuditHttpModule,
       ],
     };
   }
