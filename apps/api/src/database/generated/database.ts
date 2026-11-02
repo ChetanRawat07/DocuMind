@@ -40,14 +40,18 @@ export interface AuditLogs {
 export interface DocumentExtractions {
   ai_model: string;
   ai_provider: string;
+  classification_confidence: number;
+  classification_prompt: string;
   created_at: Generated<Timestamp>;
   document_id: string;
   document_type: string;
+  extraction_prompt: string;
   fields: Json;
   id: Generated<string>;
   job_id: string;
   overall_confidence: number;
   schema_version: number;
+  validation_issues: Json;
 }
 
 export interface Documents {

@@ -129,8 +129,12 @@ describe('schema constraints', () => {
           schema_version: 1,
           fields: JSON.stringify({}),
           overall_confidence: 0.9,
+          classification_confidence: 0.9,
+          validation_issues: JSON.stringify([]),
           ai_provider: 'test',
           ai_model: 'test',
+          classification_prompt: 'test@1',
+          extraction_prompt: 'test@1',
         })
         .execute();
       await db
@@ -239,8 +243,12 @@ describe('schema constraints', () => {
       schema_version: 1,
       fields: JSON.stringify({ total: { value: 100, confidence: 0.9 } }),
       overall_confidence: 0.9,
+      classification_confidence: 0.9,
+      validation_issues: JSON.stringify([]),
       ai_provider: 'test',
       ai_model: 'test',
+      classification_prompt: 'test@1',
+      extraction_prompt: 'test@1',
     });
 
     it('rejects a job that belongs to a different document', async () => {
@@ -286,6 +294,21 @@ describe('schema constraints', () => {
         'a negative confidence',
         { overall_confidence: -0.01 },
         'document_extractions_overall_confidence_check',
+      ],
+      [
+        'a classification confidence above 1',
+        { classification_confidence: 1.5 },
+        'document_extractions_classification_confidence_check',
+      ],
+      [
+        'validation issues that are not a JSON array',
+        { validation_issues: JSON.stringify({ code: 'x' }) },
+        'document_extractions_validation_issues_check',
+      ],
+      [
+        'an empty prompt version',
+        { extraction_prompt: '' },
+        'document_extractions_extraction_prompt_check',
       ],
     ] as const)('rejects %s', async (_case, override, constraint) => {
       const { id: documentId } = await insertDocument(db, ownerId);

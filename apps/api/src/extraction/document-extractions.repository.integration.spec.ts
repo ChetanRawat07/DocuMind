@@ -22,8 +22,12 @@ describe('DocumentExtractionsRepository', () => {
       lineItems: { value: [{ sku: 'A-1', quantity: 2 }], confidence: 0.9 },
     },
     overallConfidence: 0.81,
+    classificationConfidence: 0.95,
+    validationIssues: [{ code: 'line_item_arithmetic', fields: ['lineItems'] }],
     aiProvider: 'ollama',
     aiModel: 'test-model',
+    classificationPrompt: 'document.classify@1',
+    extractionPrompt: 'document.extract.invoice@1',
   });
 
   beforeAll(() => {
@@ -48,7 +52,13 @@ describe('DocumentExtractionsRepository', () => {
 
     expect(created).toBe(true);
     expect(extraction.fields).toEqual(extractionFor(jobId, 58_200).fields);
-    expect(extraction.overallConfidence).toBe(0.81);
+    expect(extraction).toMatchObject({
+      overallConfidence: 0.81,
+      classificationConfidence: 0.95,
+      validationIssues: [{ code: 'line_item_arithmetic', fields: ['lineItems'] }],
+      classificationPrompt: 'document.classify@1',
+      extractionPrompt: 'document.extract.invoice@1',
+    });
   });
 
   it('returns the stored extraction when a job persists its result twice', async () => {

@@ -113,16 +113,30 @@ runEntrypoint('seed', async () => {
           job_id: INVOICE_JOB_ID,
           document_type: 'invoice',
           schema_version: 1,
+          // Same shape as a real extraction (docs/processing/document-extraction.md).
           fields: JSON.stringify({
-            vendor: { value: 'ABC Pvt Ltd', confidence: 0.98 },
-            invoiceNumber: { value: 'INV-1023', confidence: 0.99 },
-            invoiceDate: { value: '2026-10-20', confidence: 0.97 },
-            total: { value: 58_200, confidence: 0.72 },
-            currency: { value: 'INR', confidence: 0.95 },
+            invoiceNumber: {
+              value: 'INV-1023',
+              confidence: 0.95,
+              evidence: 'Invoice No: INV-1023',
+            },
+            vendorName: { value: 'ABC Pvt Ltd', confidence: 0.95, evidence: 'ABC Pvt Ltd' },
+            customerName: { value: null, confidence: null, evidence: null },
+            issueDate: { value: '2026-10-20', confidence: 0.95, evidence: 'Date: 20 Oct 2026' },
+            dueDate: { value: null, confidence: null, evidence: null },
+            currency: { value: 'INR', confidence: 0.95, evidence: 'Total: ₹58,200' },
+            subtotal: { value: null, confidence: null, evidence: null },
+            taxAmount: { value: null, confidence: null, evidence: null },
+            totalAmount: { value: 58_200, confidence: 0.72, evidence: 'Total: ₹58,200' },
+            lineItems: { value: null, confidence: null, evidence: null },
           }),
-          overall_confidence: 0.92,
+          overall_confidence: 0.72,
+          classification_confidence: 0.95,
+          validation_issues: JSON.stringify([]),
           ai_provider: 'seed',
           ai_model: 'synthetic',
+          classification_prompt: 'document.classify@1',
+          extraction_prompt: 'document.extract.invoice@1',
         })
         .onConflict((conflict) => conflict.doNothing())
         .execute();

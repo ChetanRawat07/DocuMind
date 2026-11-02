@@ -3,7 +3,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { Selectable } from 'kysely';
 import { DATABASE } from '../database/database.module.js';
 import type { DatabaseExecutor } from '../database/database.types.js';
-import type { DocumentExtractions, JsonObject } from '../database/generated/database.js';
+import type { DocumentExtractions, JsonArray, JsonObject } from '../database/generated/database.js';
 
 export interface DocumentExtraction {
   readonly id: string;
@@ -14,8 +14,14 @@ export interface DocumentExtraction {
   /** Field-level values and confidences; validated against the extraction schema before insert. */
   readonly fields: JsonObject;
   readonly overallConfidence: number;
+  readonly classificationConfidence: number;
+  /** Business-rule and evidence findings: codes and field names, never values. */
+  readonly validationIssues: JsonArray;
   readonly aiProvider: string;
   readonly aiModel: string;
+  /** `template-id@version` of each prompt that produced the result. */
+  readonly classificationPrompt: string;
+  readonly extractionPrompt: string;
   readonly createdAt: Date;
 }
 
@@ -51,8 +57,12 @@ export class DocumentExtractionsRepository {
         // into a Postgres array instead of JSON.
         fields: JSON.stringify(extraction.fields),
         overall_confidence: extraction.overallConfidence,
+        classification_confidence: extraction.classificationConfidence,
+        validation_issues: JSON.stringify(extraction.validationIssues),
         ai_provider: extraction.aiProvider,
         ai_model: extraction.aiModel,
+        classification_prompt: extraction.classificationPrompt,
+        extraction_prompt: extraction.extractionPrompt,
       })
       .onConflict((conflict) => conflict.column('job_id').doNothing())
       .returningAll()
@@ -90,13 +100,17 @@ function toExtraction(row: Selectable<DocumentExtractions>): DocumentExtraction 
     id: row.id,
     documentId: row.document_id,
     jobId: row.job_id,
-    // CHECK constraints guarantee the type value and that fields is a JSON object.
+    // CHECK constraints guarantee the type value and the JSON object and array shapes.
     documentType: row.document_type as DocumentType,
     schemaVersion: row.schema_version,
     fields: row.fields as JsonObject,
     overallConfidence: row.overall_confidence,
+    classificationConfidence: row.classification_confidence,
+    validationIssues: row.validation_issues as JsonArray,
     aiProvider: row.ai_provider,
     aiModel: row.ai_model,
+    classificationPrompt: row.classification_prompt,
+    extractionPrompt: row.extraction_prompt,
     createdAt: row.created_at,
   };
 }
