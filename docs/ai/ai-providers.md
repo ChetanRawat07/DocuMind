@@ -96,7 +96,8 @@ Every failure is an `AiProviderError`:
 | `authentication`  | no        | 401/403: bad or missing token                                          |
 | `invalid_request` | no        | Other 4xx: unknown model, prompt too large                             |
 
-- Providers do not retry; the Phase 9 job runner does, using `retryable` and `retryAfterMs`.
+- Providers do not retry; the worker does, using `retryable` and `retryAfterMs` (codes `ai_<kind>`,
+  see [job queue](../processing/job-queue.md)).
 - A caller's own cancellation (its `AbortSignal`) is rethrown unchanged, so a shutdown is not
   recorded as a provider failure.
 - Error messages include the provider's short reason ("model 'x' not found") but never prompt or

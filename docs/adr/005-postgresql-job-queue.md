@@ -42,6 +42,7 @@ document, and transactional enqueueing together with the document insert.
   matter for durability; same dual-write problem.
 - **A library such as pg-boss.** A credible option; deferred to Phase 9, where building the claim
   logic directly versus adopting a library will be decided with the actual schema in hand.
+  (Phase 9 built it directly; see ADR-008.)
 
 ## Trade-offs
 

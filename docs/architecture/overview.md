@@ -3,7 +3,7 @@
 This document describes the architecture **as implemented** and marks planned parts explicitly.
 Decisions and their reasoning live in [the ADRs](../adr/README.md).
 
-## Current state: Phase 4 (document upload and object storage)
+## Current state: Phase 9 (asynchronous queue and workers)
 
 Implemented: repository structure, the API process with liveness and readiness endpoints, the
 worker process skeleton, shared contracts, configuration validation, the PostgreSQL schema with
@@ -15,15 +15,18 @@ and accessibility tests, and document upload/delete with content validation and 
 storage (filesystem adapter locally, S3-compatible adapter for R2), and document management
 (search, filters, keyset-paged sorting, detail page, audited view and download streamed through the
 API), and text extraction (pdf.js text layer, tesseract.js OCR for scanned pages, stored per page;
-run manually for now), and the AI provider layer (Ollama locally, Cloudflare Workers AI in the
+stored per page), and the AI provider layer (Ollama locally, Cloudflare Workers AI in the
 demo, chosen by configuration), and document classification and structured extraction with
-evidence-based confidence (run manually for now). Not yet implemented: job processing, and the processing, review,
-analytics and audit-log screens.
+evidence-based confidence, and the job queue: upload enqueues a job, and the worker claims it,
+runs text extraction and AI extraction, and retries, dead-letters or recovers it after a crash.
+Not yet implemented: the review workflow, and the processing, review, analytics and audit-log
+screens.
 
 - Schema, constraints and indexes: [database/schema.md](../database/schema.md)
 - Text extraction and OCR: [processing/text-extraction.md](../processing/text-extraction.md)
 - AI providers: [ai/ai-providers.md](../ai/ai-providers.md)
 - Classification and extraction: [processing/document-extraction.md](../processing/document-extraction.md)
+- Job queue, retries and the worker: [processing/job-queue.md](../processing/job-queue.md)
 - Authentication and authorization: [security/authentication.md](../security/authentication.md)
 - Document management: [documents/document-management.md](../documents/document-management.md)
 - Web UI (tokens, components, layout, accessibility): [frontend/ui-foundation.md](../frontend/ui-foundation.md)
@@ -44,7 +47,7 @@ analytics and audit-log screens.
      │ API process  (main.ts)       │        │ Worker process (worker.ts)   │
      │ NestJS HTTP app: AppModule   │        │ Nest app context: WorkerModule│
      │  • helmet, CORS, error filter│
-     │  • global auth guard (JWKS)  │        │  • poll loop (skeleton)       │
+     │  • global auth guard (JWKS)  │        │  • poll loop: claim, process  │
      │  • /api/v1/health[/ready]    │        │  • graceful SIGTERM shutdown  │
      └──────────────┬───────────────┘        └──────────────┬───────────────┘
                     │  same codebase and repositories (ADR-001)│
@@ -155,7 +158,8 @@ logged server-side only.
 `PollingLoop` calls `tick()`. If the tick reports work was found, it polls again immediately;
 otherwise, or after an error, it waits `WORKER_POLL_INTERVAL_MS`. Ticks never overlap. On shutdown
 the idle wait is interrupted at once, but an in-flight tick is allowed to finish. In Phase 0 the
-tick does nothing; Phase 9 makes it claim and process one job.
+tick did nothing; since Phase 9 it releases expired leases, then claims and processes one job
+([job queue](../processing/job-queue.md)).
 
 ## API conventions (established)
 

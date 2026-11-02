@@ -51,6 +51,9 @@ npm audit
   add `UNTRUSTED_TEXT_RULE` to the system prompt, request output through `generateStructured` (Zod
   validated), and never act on model output as an instruction. Prompts are versioned templates:
   change the wording, bump the version.
+- **Background steps must be safe to repeat.** Jobs run at least once: a crash means a step runs
+  again. Make each step's effect idempotent (unique per job, or reuse what exists), and make every
+  job write after the claim go through the fenced methods of `ProcessingJobsRepository` (ADR-008).
 - **Never store a model's own confidence as a score.** Field confidence comes from the evidence
   checks in `assess-extraction.ts` (ADR-017). New fields need a kind, so their quotes can be
   checked.

@@ -19,9 +19,10 @@ document_text_pages
 ```
 
 - `DocumentAnalysisService.analyze(documentId)` only reads and calls the model.
-  `save(jobId, analysis)` stores a result for the processing job that produced it. The Phase 9
-  worker calls both; until then `npm run analyze -- <documentId>` runs `analyze` and prints the
-  result without storing it.
+  `save(jobId, analysis)` stores a result for the processing job that produced it. The worker
+  calls both ([job queue](job-queue.md)) and saves inside the transaction that finishes the job.
+  `npm run analyze -- <documentId>` runs `analyze` by hand and prints the result without storing
+  it.
 - Two AI calls per supported document, one for an unsupported one.
 - Model output that fails the schema becomes an `invalid_output` error before the service sees
   it, so it can never be stored.
@@ -196,8 +197,8 @@ caught it: its quote did not show the value. That is why `value_not_in_evidence`
   - A quote can be real and still be the wrong line (for example a line item's amount used as
     the subtotal). Business rules catch some of these.
   - Small numbers ("1") are easy to find in any quote.
-- **No retry.** At temperature 0, retrying an `invalid_output` usually repeats it. Phase 9 bounds
-  retries.
+- **Retries rarely help with `invalid_output`.** At temperature 0 a retry usually repeats the
+  same answer. The worker retries it like any retryable error, up to three attempts.
 - **Untested on Cloudflare.** The JSON Schemas use `anyOf` for nullable values and `format: date`.
   Ollama handles them; Workers AI has only been tested for authentication failure.
 - **English only**, and one currency per document.

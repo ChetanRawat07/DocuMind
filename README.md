@@ -13,8 +13,8 @@ LLM, validates them against schemas and flags low-confidence results for human r
 Built in phases (see `DocuMind_Interview_Ready_Development_Plan.md`).
 **Phases 0 (foundation), 1 (database and data model), 2 (authentication and authorization), 3
 (UI foundation), 4 (document upload and object storage), 5 (document management), 6 (text
-extraction and OCR), 7 (AI provider abstraction) and 8 (document classification and structured
-extraction) are complete.** The following exist today:
+extraction and OCR), 7 (AI provider abstraction), 8 (document classification and structured
+extraction) and 9 (asynchronous queue and workers) are complete.** The following exist today:
 
 - NestJS API process with liveness and readiness endpoints, security headers, CORS allow-list and
   a consistent error format.
@@ -24,7 +24,7 @@ extraction) are complete.** The following exist today:
 - Authentication with Supabase Auth: sign-up, sign-in, sign-out and password reset in the web app;
   every API route requires a verified access token unless explicitly public; users are provisioned
   on first request; document endpoints enforce ownership (another user's document is a 404).
-- Worker process skeleton with a graceful-shutdown poll loop (no job processing yet).
+- Worker process with a graceful-shutdown poll loop that processes queued jobs (see below).
 - Shared Zod contracts used by both API and web.
 - React + Vite + Tailwind web app with the product shell: sidebar (a drawer on phones), top bar
   with breadcrumb and account menu, a dashboard (recent documents from the API; metrics show
@@ -44,8 +44,7 @@ extraction) are complete.** The following exist today:
 
 - Text extraction: each PDF page's text layer is used where it has content; scanned pages and
   images are read with OCR (Tesseract as WebAssembly, English, fully offline). Text is normalized
-  and stored per page with its method and OCR confidence. Until the worker processes jobs (Phase
-  9), extraction is started with `npm run extract -- <documentId>`.
+  and stored per page with its method and OCR confidence.
 
 - AI provider layer: one interface with an Ollama provider (local, Docker) and a Cloudflare
   Workers AI provider (demo), chosen by configuration. Requests have a timeout, failures are
@@ -58,11 +57,17 @@ extraction) are complete.** The following exist today:
   supporting quote for each. Answers are validated with Zod, checked with business rules (dates,
   totals, line items) and scored per field from evidence: is the quote really in the document,
   does it show the value, how good was the OCR. Results are stored per processing job with their
-  issues and prompt versions. Until Phase 9, `npm run analyze -- <documentId>` runs the analysis
-  and prints it without storing it.
+  issues and prompt versions.
 
-Not built yet: job processing, review workflow, analytics, and the
-processing, review, analytics and audit-log screens.
+- Asynchronous processing: upload queues a job in the same transaction; the worker claims it
+  (`FOR UPDATE SKIP LOCKED`, safe with several workers), extracts text, then classifies and extracts
+  fields, and sends the document to review. Failures are classified as retryable or permanent;
+  retries back off exponentially with jitter, up to three attempts, and permanent failures end in a
+  dead letter that users can retry. A crashed worker's job is taken over when its lease expires,
+  and stale workers' writes are fenced out. The job history is available per document.
+
+Not built yet: review workflow, analytics, and the processing, review, analytics and audit-log
+screens.
 
 ## Architecture
 
@@ -92,7 +97,7 @@ both system of record and job queue, and object storage for files. See:
 | Data access    | Kysely, `pg`, kysely-codegen                   | In use                            |
 | Auth           | Supabase Auth, supabase-js, `jose` (JWKS)      | In use                            |
 | Routing (web)  | React Router                                   | In use                            |
-| Job queue      | PostgreSQL (`FOR UPDATE SKIP LOCKED`)          | Schema ready; logic in Phase 9    |
+| Job queue      | PostgreSQL (`FOR UPDATE SKIP LOCKED`)          | Implemented                       |
 | Object storage | Local folder (dev), Cloudflare R2 (AWS SDK v3) | In use (R2 not yet smoke-tested)  |
 | OCR            | pdf.js text layer + tesseract.js (WASM)        | Implemented (manual runs)         |
 | AI             | Ollama (local), Cloudflare Workers AI (demo)   | Provider layer; used from Phase 8 |
@@ -115,7 +120,7 @@ docs/
   frontend/       Design tokens, components, layout, accessibility
   storage/        Upload validation, storage keys, consistency, R2 setup
   documents/      Search, filters, keyset sorting, file access
-  processing/     Text extraction, OCR, classification and field extraction
+  processing/     Text extraction, OCR, classification, field extraction, job queue
   ai/             AI providers, errors, prompts
 docker-compose.yml  Local infrastructure (PostgreSQL; Ollama with the `ai` profile)
 ```
@@ -172,7 +177,7 @@ Details, including recommended hardening, are in
 | `npm run db:rollback`      | Revert the most recent migration                           |
 | `npm run db:reset`         | Revert all migrations (refused in production)              |
 | `npm run db:seed`          | Insert demo data (idempotent; refused in production)       |
-| `npm run extract -- <id>`  | Extract a document's text now (until Phase 9 automates it) |
+| `npm run extract -- <id>`  | Extract a document's text by hand (the worker does it too) |
 | `npm run analyze -- <id>`  | Classify and extract fields; prints, stores nothing        |
 | `npm run ai:up`            | Start local Ollama (Docker) and download `qwen2.5:3b`      |
 | `npm run ai:check`         | One structured round trip through the configured provider  |
@@ -244,8 +249,10 @@ with a message naming the variable.
 | GET    | `/api/v1/documents`             | Bearer | The caller's documents: `q`, `status`, `type`, `format`, `sort`, `limit` (1–100, default 20), opaque `cursor` ([details](docs/documents/document-management.md)) |
 | GET    | `/api/v1/documents/:id`         | Bearer | One of the caller's documents; 404 for other users' and unknown ids                                                                                              |
 | GET    | `/api/v1/documents/:id/content` | Bearer | The file; `disposition=inline` (preview) or `attachment` (default, download); audited; 404 if not yours                                                          |
-| POST   | `/api/v1/documents`             | Bearer | Multipart upload, one `file` part (PDF/PNG/JPEG ≤ 10 MB); 201 with the document; 413/415/400 on rejection                                                        |
+| POST   | `/api/v1/documents`             | Bearer | Multipart upload, one `file` part (PDF/PNG/JPEG ≤ 10 MB); 201 with the document, queued for processing; 413/415/400 on rejection                                 |
 | DELETE | `/api/v1/documents/:id`         | Bearer | Deletes the document and its file; 204, or 404 if it is not yours                                                                                                |
+| GET    | `/api/v1/documents/:id/jobs`    | Bearer | The document's 20 most recent processing jobs: status, stage, attempts, error code ([details](docs/processing/job-queue.md))                                     |
+| POST   | `/api/v1/documents/:id/jobs`    | Bearer | Retries a failed document: 202 with the queued job (the active job if one exists); 409 once in review or completed                                               |
 
 All errors use `{ "error": { "code": "<HTTP_STATUS_NAME>", "message": "…" } }`. Server errors
 never include internal details. Authenticated endpoints return 401 (with `WWW-Authenticate`) for a

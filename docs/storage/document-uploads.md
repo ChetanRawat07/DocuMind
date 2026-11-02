@@ -107,4 +107,5 @@ bucket in this project. Do that once credentials exist, before relying on it.
 - 10 MiB per file; no per-user quota or rate limit yet (Phase 13). Concurrent uploads each hold up
   to 10 MiB in API memory.
 - Duplicate files are stored again; no content hashing yet.
-- New documents stay in `uploaded`; queuing for processing arrives in Phase 9.
+- Upload queues the document for processing in the same transaction
+  ([job queue](../processing/job-queue.md)).

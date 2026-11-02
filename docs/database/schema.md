@@ -169,8 +169,8 @@ job's document id. It must never receive an id from an HTTP request.
 ### processing_jobs
 
 **Why it exists.** It is the durable queue (ADR-005) and the job history shown in the Processing
-UI. Behavior (claiming, leases, retries, completion) is built in Phase 9; this phase defines the
-schema that makes that behavior safe.
+UI. Phase 1 defined the schema that makes the queue safe; Phase 9 built the behavior (claiming,
+leases, retries, completion), described in [job queue](../processing/job-queue.md).
 
 **State.** `status`: `queued → running → succeeded | failed`. A retryable failure returns the job to
 `queued` with a later `available_at` (backoff) and incremented `attempts`. `failed` is terminal (the
@@ -205,10 +205,11 @@ claim or lease indexes at all.
 DO NOTHING`. The partial unique index is the arbiter; ten concurrent enqueues produce exactly one
   job (tested). A narrow race (the conflicting job finishes before it can be read back) is handled
   by retrying the insert.
-- _Multiple workers (Phase 9):_ `FOR UPDATE SKIP LOCKED` lets each worker lock a different queued
+- _Multiple workers:_ `FOR UPDATE SKIP LOCKED` lets each worker lock a different queued
   row without waiting on rows other workers hold.
-- _Worker crash (Phase 9):_ the claim sets `lease_expires_at`; a running job whose lease expired
-  is returned to the queue by stale-job recovery.
+- _Worker crash:_ the claim sets `lease_expires_at`; a running job whose lease expired is returned
+  to the queue, or failed when no attempts remain. Writes after a claim are fenced by `attempts`,
+  so a worker that lost its job changes nothing.
 - _Pooler compatibility:_ all of this uses row locks inside a transaction, which work through
   Supabase's transaction-mode pooler. Session-level advisory locks would not.
 

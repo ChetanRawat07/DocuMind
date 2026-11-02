@@ -1,6 +1,6 @@
 # ADR-004: Asynchronous document processing
 
-- **Status:** Accepted (implementation in Phase 9)
+- **Status:** Accepted (implemented in Phase 9; see ADR-008)
 - **Date:** 2026-10-26
 
 ## Context

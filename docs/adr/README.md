@@ -16,7 +16,7 @@ schedules for later phases.
 | [005](005-postgresql-job-queue.md)             | PostgreSQL-backed job queue (no RabbitMQ)       | Accepted | Phase 0    |
 | [006](006-ai-provider-abstraction.md)          | AI provider abstraction (Ollama, Workers AI)    | Accepted | Phase 7    |
 | [007](007-ocr-strategy.md)                     | Text extraction with pdf.js and tesseract.js    | Accepted | Phase 6    |
-| 008                                            | Retry and idempotency strategy                  | Planned  | Phase 9    |
+| [008](008-retry-and-idempotency.md)            | Retry and idempotency strategy                  | Accepted | Phase 9    |
 | [009](009-zero-cost-deployment.md)             | Zero-cost deployment architecture               | Accepted | Phase 0    |
 | 010                                            | Document retention strategy                     | Planned  | Later      |
 | [011](011-monorepo-and-toolchain.md)           | Monorepo layout and toolchain                   | Accepted | Phase 0    |

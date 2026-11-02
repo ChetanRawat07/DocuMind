@@ -69,8 +69,8 @@ The service treats that as "document gone" and returns `null`, storing nothing.
 
 ## Errors
 
-`TextExtractionError` has a `failure` code and a `permanent` flag. The Phase 9 job runner uses the
-flag to decide whether a retry can help.
+`TextExtractionError` has a `failure` code and a `permanent` flag. The worker uses the flag to
+decide whether a retry can help ([job queue](job-queue.md)), and stores the code on the job.
 
 | Failure              | Permanent | Cause                                                 |
 | -------------------- | --------- | ----------------------------------------------------- |
@@ -99,7 +99,8 @@ Each successful extraction appends `document.text_extracted`:
 
 ## Running it
 
-Until the worker processes jobs (Phase 9), extraction is started by hand:
+The worker extracts text as the first step of each job. For development, it can also be run by
+hand:
 
 ```bash
 npm run extract -- <documentId>
@@ -136,7 +137,7 @@ the V8 heap, so `--max-old-space-size` does not bound it.
 - English only.
 - Text layers with broken font encodings (no Unicode mapping) come out as gibberish but count as
   text, so they are not OCR'd. Detecting that needs a quality heuristic or the AI step.
-- No per-page timeout. A pathological page is bounded by the Phase 9 job lease.
+- No per-page timeout. A pathological page is bounded by the job lease: another worker takes the
+  job over once it expires.
 - Tables and columns are flattened to lines. Layout-aware extraction is out of scope.
 - Rotated scans are read as-is (Tesseract tolerates small skew; 90° rotations are not corrected).
-- Extraction runs only via the CLI until Phase 9.
