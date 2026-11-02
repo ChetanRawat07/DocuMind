@@ -92,6 +92,28 @@ const envSchema = z.object({
     .optional(),
   S3_ACCESS_KEY_ID: z.string().min(1).optional(),
   S3_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+  AI_PROVIDER: z.enum(['ollama', 'cloudflare']).optional(),
+  // CPU-only Ollama took 130 s for a 4,600-token prompt; hosted models answer far sooner.
+  AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(600_000).default(300_000),
+  OLLAMA_BASE_URL: z
+    .string()
+    .refine(isBareOrigin, { message: 'Must be scheme://host[:port] with no path' })
+    .default('http://localhost:11434'),
+  OLLAMA_MODEL: z
+    .string()
+    .regex(/^[a-z0-9][a-z0-9._:/-]{0,199}$/, { message: 'Must be an Ollama model name' })
+    .default('qwen2.5:3b'),
+  CLOUDFLARE_ACCOUNT_ID: z
+    .string()
+    .regex(/^[0-9a-f]{32}$/, { message: 'Must be the 32-character Cloudflare account id' })
+    .optional(),
+  CLOUDFLARE_AI_API_TOKEN: z.string().min(1).optional(),
+  CLOUDFLARE_AI_MODEL: z
+    .string()
+    .regex(/^@(cf|hf)\/[a-z0-9._-]+\/[a-z0-9._-]+$/, {
+      message: 'Must be a Workers AI model id such as @cf/meta/llama-3.3-70b-instruct-fp8-fast',
+    })
+    .default('@cf/meta/llama-3.3-70b-instruct-fp8-fast'),
 });
 
 const S3_REQUIRED = [
@@ -115,6 +137,22 @@ export type StorageConfig =
       readonly accessKeyId: string;
       /** Secret: never log it. */
       readonly secretAccessKey: string;
+    };
+
+export type AiConfig =
+  | {
+      readonly provider: 'ollama';
+      readonly baseUrl: string;
+      readonly model: string;
+      readonly timeoutMs: number;
+    }
+  | {
+      readonly provider: 'cloudflare';
+      readonly accountId: string;
+      /** Secret: never log it. */
+      readonly apiToken: string;
+      readonly model: string;
+      readonly timeoutMs: number;
     };
 
 export interface AppConfig {
@@ -143,6 +181,7 @@ export interface AppConfig {
     readonly jwksUrl: URL;
   };
   readonly storage: StorageConfig;
+  readonly ai: AiConfig;
 }
 
 export class ConfigValidationError extends Error {
@@ -171,6 +210,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
   }
 
   const storage = storageConfigFrom(parsed);
+  const ai = aiConfigFrom(parsed);
 
   const issuer = `${parsed.SUPABASE_URL}/auth/v1`;
   return {
@@ -185,6 +225,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
     },
     auth: { issuer, jwksUrl: new URL(`${issuer}/.well-known/jwks.json`) },
     storage,
+    ai,
   };
 }
 
@@ -216,5 +257,44 @@ function storageConfigFrom(parsed: z.output<typeof envSchema>): StorageConfig {
     bucket: S3_BUCKET,
     accessKeyId: S3_ACCESS_KEY_ID,
     secretAccessKey: S3_SECRET_ACCESS_KEY,
+  };
+}
+
+function aiConfigFrom(parsed: z.output<typeof envSchema>): AiConfig {
+  // Production must say which provider receives document text; elsewhere the local default is safe.
+  if (!parsed.AI_PROVIDER && parsed.NODE_ENV === 'production') {
+    throw new ConfigValidationError(['AI_PROVIDER: Required in production (ollama or cloudflare)']);
+  }
+  const timeoutMs = parsed.AI_TIMEOUT_MS;
+
+  if ((parsed.AI_PROVIDER ?? 'ollama') === 'ollama') {
+    // Document text must not cross a network in plain text: https, or http to this machine only.
+    if (parsed.NODE_ENV === 'production' && !isStorageEndpoint(parsed.OLLAMA_BASE_URL)) {
+      throw new ConfigValidationError([
+        'OLLAMA_BASE_URL: Must use https in production (http is allowed only for localhost)',
+      ]);
+    }
+    return {
+      provider: 'ollama',
+      baseUrl: parsed.OLLAMA_BASE_URL,
+      model: parsed.OLLAMA_MODEL,
+      timeoutMs,
+    };
+  }
+
+  const { CLOUDFLARE_ACCOUNT_ID: accountId, CLOUDFLARE_AI_API_TOKEN: apiToken } = parsed;
+  if (!accountId || !apiToken) {
+    throw new ConfigValidationError(
+      (['CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_AI_API_TOKEN'] as const)
+        .filter((name) => parsed[name] === undefined)
+        .map((name) => `${name}: Required when AI_PROVIDER is cloudflare`),
+    );
+  }
+  return {
+    provider: 'cloudflare',
+    accountId,
+    apiToken,
+    model: parsed.CLOUDFLARE_AI_MODEL,
+    timeoutMs,
   };
 }

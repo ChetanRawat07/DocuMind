@@ -19,6 +19,12 @@ describe('loadConfig', () => {
         jwksUrl: new URL('https://abcdefghijklmnopqrst.supabase.co/auth/v1/.well-known/jwks.json'),
       },
       storage: { driver: 'filesystem', root: resolve('.data/storage') },
+      ai: {
+        provider: 'ollama',
+        baseUrl: 'http://localhost:11434',
+        model: 'qwen2.5:3b',
+        timeoutMs: 300_000,
+      },
     });
   });
 
@@ -199,6 +205,79 @@ describe('loadConfig', () => {
       } catch (error) {
         expect(String(error)).not.toContain('very-secret-value');
       }
+    });
+  });
+
+  describe('ai', () => {
+    // Production settings that pass every other check, so only the AI rules are under test.
+    const PRODUCTION = {
+      ...REQUIRED,
+      NODE_ENV: 'production',
+      STORAGE_DRIVER: 's3',
+      S3_ENDPOINT: 'https://0123456789abcdef.r2.cloudflarestorage.com',
+      S3_BUCKET: 'documind-documents',
+      S3_ACCESS_KEY_ID: 'key-id',
+      S3_SECRET_ACCESS_KEY: 'secret',
+    };
+    const CLOUDFLARE = {
+      AI_PROVIDER: 'cloudflare',
+      CLOUDFLARE_ACCOUNT_ID: '0123456789abcdef0123456789abcdef',
+      CLOUDFLARE_AI_API_TOKEN: 'very-secret-token',
+    };
+
+    it('reads Cloudflare settings with the default model', () => {
+      expect(loadConfig({ ...PRODUCTION, ...CLOUDFLARE, AI_TIMEOUT_MS: '30000' }).ai).toEqual({
+        provider: 'cloudflare',
+        accountId: CLOUDFLARE.CLOUDFLARE_ACCOUNT_ID,
+        apiToken: CLOUDFLARE.CLOUDFLARE_AI_API_TOKEN,
+        model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+        timeoutMs: 30_000,
+      });
+    });
+
+    it('requires an explicit provider in production', () => {
+      expect(() => loadConfig(PRODUCTION)).toThrow(/AI_PROVIDER: Required in production/);
+    });
+
+    it('names every missing Cloudflare setting, without echoing the token', () => {
+      try {
+        loadConfig({
+          ...REQUIRED,
+          AI_PROVIDER: 'cloudflare',
+          CLOUDFLARE_AI_API_TOKEN: 'very-secret-token',
+        });
+        expect.unreachable();
+      } catch (error) {
+        expect(error).toMatchObject({
+          issues: ['CLOUDFLARE_ACCOUNT_ID: Required when AI_PROVIDER is cloudflare'],
+        });
+        expect(String(error)).not.toContain('very-secret-token');
+      }
+    });
+
+    it('allows plain-http Ollama only on this machine in production', () => {
+      const ollama = { ...PRODUCTION, AI_PROVIDER: 'ollama' };
+      expect(loadConfig(ollama).ai).toMatchObject({
+        provider: 'ollama',
+        baseUrl: 'http://localhost:11434',
+      });
+      expect(() =>
+        loadConfig({ ...ollama, OLLAMA_BASE_URL: 'http://gpu-box.internal:11434' }),
+      ).toThrow(/OLLAMA_BASE_URL: Must use https in production/);
+      expect(loadConfig({ ...REQUIRED, OLLAMA_BASE_URL: 'http://ollama:11434' }).ai).toMatchObject({
+        baseUrl: 'http://ollama:11434',
+      });
+    });
+
+    it.each([
+      ['AI_PROVIDER', 'openai'],
+      ['AI_TIMEOUT_MS', '10'],
+      ['OLLAMA_BASE_URL', 'http://localhost:11434/api'],
+      ['OLLAMA_MODEL', 'Qwen 2.5'],
+      ['CLOUDFLARE_ACCOUNT_ID', 'not-an-account'],
+      ['CLOUDFLARE_AI_MODEL', 'llama-3'],
+    ])('rejects %s=%s', (name, value) => {
+      expect(() => loadConfig({ ...REQUIRED, [name]: value })).toThrow(ConfigValidationError);
     });
   });
 });
