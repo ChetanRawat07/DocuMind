@@ -131,6 +131,105 @@ describe('accessibility', () => {
     await expectNoViolations();
   });
 
+  it('the processing page with a summary and jobs has no violations', async () => {
+    stubApi((url) => {
+      if (url === '/api/v1/processing/summary') {
+        return Response.json({
+          windowDays: 7,
+          queued: 1,
+          running: 0,
+          oldestQueuedAt: null,
+          succeeded: 1,
+          failed: 1,
+          failuresByCode: [{ code: 'ai_timeout', count: 1 }],
+          processingMs: { average: 1000, p95: 1000 },
+          textExtractionMs: { average: null, p95: null },
+          aiMs: { average: 900, p95: 900 },
+        });
+      }
+      if (url.startsWith('/api/v1/processing/jobs')) {
+        return Response.json({
+          items: [
+            {
+              id: '00000000-0000-4000-8000-0000000000a1',
+              status: 'running',
+              stage: 'ai_extraction',
+              attempts: 1,
+              maxAttempts: 3,
+              errorCode: null,
+              requestId: null,
+              textExtractionMs: 1000,
+              aiMs: null,
+              availableAt: '2026-10-29T10:00:00.000Z',
+              startedAt: '2026-10-29T10:00:00.000Z',
+              finishedAt: null,
+              createdAt: '2026-10-29T10:00:00.000Z',
+              document: { id: '00000000-0000-4000-8000-0000000000d1', originalFilename: 'a.pdf' },
+            },
+          ],
+        });
+      }
+      return undefined;
+    });
+    renderApp('/processing', fakeSession());
+    await screen.findByRole('table');
+
+    await expectNoViolations();
+  });
+
+  it('the audit log with more pages has no violations', async () => {
+    const document = testDocument();
+    const entry = {
+      id: '1',
+      occurredAt: '2026-10-29T10:00:00.000Z',
+      actor: 'system',
+      action: 'document.text_extracted',
+      resourceType: 'document',
+      resourceId: document.id,
+      requestId: '7d5e1f0a-0000-4000-8000-000000000001',
+      metadata: { pageCount: 1 },
+    };
+    stubApi((url) => {
+      if (url.startsWith('/api/v1/audit-logs'))
+        return Response.json({ items: [entry], nextCursor: '1' });
+      return undefined;
+    });
+
+    renderApp('/audit-logs', fakeSession());
+    await screen.findByRole('button', { name: 'Load more' });
+    await expectNoViolations();
+  });
+
+  it('the detail page activity has no violations', async () => {
+    const document = testDocument();
+    Object.assign(URL, { createObjectURL: () => 'blob:test/1', revokeObjectURL: () => undefined });
+    stubApi((url) => {
+      if (url.endsWith('/activity')) {
+        return Response.json({
+          items: [
+            {
+              id: '1',
+              occurredAt: '2026-10-29T10:00:00.000Z',
+              actor: 'user',
+              action: 'document.uploaded',
+              resourceType: 'document',
+              resourceId: document.id,
+              requestId: null,
+              metadata: {},
+            },
+          ],
+        });
+      }
+      if (url === `/api/v1/documents/${document.id}`) return Response.json(document);
+      if (url.includes('/content?')) return new Response(new Blob(['x']));
+      return undefined;
+    });
+    renderApp(`/documents/${document.id}`, fakeSession());
+    await screen.findByRole('list', { name: 'Document activity' });
+
+    await expectNoViolations();
+  });
+
   it('the detail page for a missing document has no violations', async () => {
     stubApi((url) =>
       url.startsWith('/api/v1/documents/')

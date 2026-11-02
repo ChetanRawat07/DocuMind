@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router';
 import { RequireAuth } from './auth/require-auth';
 import { AppShell } from './layout/app-shell';
 import { NAV_ITEMS } from './layout/navigation';
+import { AuditLogsPage } from './pages/audit-logs-page';
 import { ComingSoonPage } from './pages/coming-soon-page';
 import { DashboardPage } from './pages/dashboard-page';
 import { DocumentDetailPage } from './pages/document-detail-page';
@@ -9,6 +10,7 @@ import { DocumentsPage } from './pages/documents-page';
 import { ForgotPasswordPage } from './pages/forgot-password-page';
 import { LoginPage } from './pages/login-page';
 import { NotFoundPage } from './pages/not-found-page';
+import { ProcessingPage } from './pages/processing-page';
 import { ResetPasswordPage } from './pages/reset-password-page';
 import { ReviewPage } from './pages/review-page';
 import { SettingsPage } from './pages/settings-page';
@@ -35,19 +37,13 @@ export function App() {
         <Route index element={<DashboardPage />} />
         <Route path={NAV_ITEMS.documents.path} element={<DocumentsPage />} />
         <Route path={`${NAV_ITEMS.documents.path}/:documentId`} element={<DocumentDetailPage />} />
-        <Route
-          path={NAV_ITEMS.processing.path}
-          element={<ComingSoonPage item={NAV_ITEMS.processing} />}
-        />
+        <Route path={NAV_ITEMS.processing.path} element={<ProcessingPage />} />
         <Route path={NAV_ITEMS.review.path} element={<ReviewPage />} />
         <Route
           path={NAV_ITEMS.analytics.path}
           element={<ComingSoonPage item={NAV_ITEMS.analytics} />}
         />
-        <Route
-          path={NAV_ITEMS.auditLogs.path}
-          element={<ComingSoonPage item={NAV_ITEMS.auditLogs} />}
-        />
+        <Route path={NAV_ITEMS.auditLogs.path} element={<AuditLogsPage />} />
         <Route path={NAV_ITEMS.settings.path} element={<SettingsPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>

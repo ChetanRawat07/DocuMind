@@ -2,6 +2,7 @@ import { type DocumentDto, documentSchema } from '@documind/shared';
 import { ArrowLeft, FileX } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
+import { DocumentActivity } from '../components/documents/document-activity';
 import { DeleteDocumentButton } from '../components/documents/delete-document-button';
 import { DocumentPreview } from '../components/documents/document-preview';
 import { DownloadDocumentButton } from '../components/documents/download-document-button';
@@ -116,6 +117,7 @@ export function DocumentDetailPage() {
               title="Could not load the document"
               description="Check your connection and try again."
               onRetry={result.retry}
+              error={result.error}
             />
           )}
         </Card>
@@ -158,6 +160,10 @@ export function DocumentDetailPage() {
           <Card className="overflow-hidden">
             <CardHeader title="Details" className="border-b border-gray-100 px-5 py-4" />
             <DocumentDetails document={document} />
+          </Card>
+          <Card className="overflow-hidden">
+            <CardHeader title="Activity" className="border-b border-gray-100 px-5 py-4" />
+            <DocumentActivity key={document.status} document={document} />
           </Card>
         </div>
       </div>

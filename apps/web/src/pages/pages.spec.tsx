@@ -150,12 +150,10 @@ describe('SettingsPage', () => {
 describe('ComingSoonPage', () => {
   it('says plainly that the section is not available yet', async () => {
     stubApi();
-    renderApp('/processing', fakeSession());
+    renderApp('/analytics', fakeSession());
 
-    expect(
-      await screen.findByRole('heading', { level: 1, name: 'Processing' }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Analytics' })).toBeInTheDocument();
     expect(screen.getByText('Coming soon')).toBeInTheDocument();
-    expect(screen.getByText(/Processing is not available yet/)).toBeInTheDocument();
+    expect(screen.getByText(/Analytics is not available yet/)).toBeInTheDocument();
   });
 });

@@ -81,3 +81,16 @@ export function formatBytes(bytes: number, locale?: string): string {
   const number = new Intl.NumberFormat(locale, { maximumFractionDigits: digits }).format(value);
   return `${number} ${BYTE_UNITS[unit] ?? 'B'}`;
 }
+
+/** "850 ms", "12.4 s", "2 min 5 s". */
+export function formatDuration(ms: number, locale?: string): string {
+  if (ms < 1000) return `${String(Math.round(ms))} ms`;
+  if (ms < 60_000) {
+    const seconds = new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(ms / 1000);
+    return `${seconds} s`;
+  }
+  const totalSeconds = Math.round(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return seconds === 0 ? `${String(minutes)} min` : `${String(minutes)} min ${String(seconds)} s`;
+}

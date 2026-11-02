@@ -4,6 +4,7 @@ import {
   formatAmount,
   formatCalendarDate,
   formatDate,
+  formatDuration,
   formatPercent,
   formatRelativeTime,
 } from './format';
@@ -91,5 +92,17 @@ describe('initialsOf', () => {
     ['  ', '?'],
   ])('turns "%s" into %s', (name, expected) => {
     expect(initialsOf(name)).toBe(expected);
+  });
+});
+
+describe('formatDuration', () => {
+  it.each([
+    [850, '850 ms'],
+    [12_400, '12.4 s'],
+    [59_949, '59.9 s'],
+    [125_000, '2 min 5 s'],
+    [120_000, '2 min'],
+  ])('formats %d ms as "%s"', (ms, expected) => {
+    expect(formatDuration(ms, 'en')).toBe(expected);
   });
 });
