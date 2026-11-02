@@ -85,7 +85,6 @@ export class DocumentsService {
             action: 'document.uploaded',
             resourceType: 'document',
             resourceId: documentId,
-            requestId: null,
             // No filename: audit entries outlive the document and keep only what is needed.
             metadata: { mimeType, sizeBytes: file.content.length, jobId: job.id },
           },
@@ -135,7 +134,6 @@ export class DocumentsService {
         action: disposition === 'inline' ? 'document.viewed' : 'document.downloaded',
         resourceType: 'document',
         resourceId: document.id,
-        requestId: null,
         metadata: { mimeType: document.mimeType, sizeBytes: document.sizeBytes },
       });
     } catch (error) {
@@ -166,7 +164,6 @@ export class DocumentsService {
             action: 'document.processing_requested',
             resourceType: 'document',
             resourceId: documentId,
-            requestId: null,
             metadata: { jobId: result.job.id },
           },
           trx,
@@ -196,7 +193,6 @@ export class DocumentsService {
             action: 'document.deleted',
             resourceType: 'document',
             resourceId: documentId,
-            requestId: null,
             metadata: { mimeType: document.mimeType, sizeBytes: document.sizeBytes },
           },
           trx,

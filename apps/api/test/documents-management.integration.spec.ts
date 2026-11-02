@@ -321,6 +321,7 @@ describe('document search, filters and file access (HTTP)', () => {
       expect(apiErrorResponseSchema.parse(response.body).error).toEqual({
         code: 'INTERNAL_SERVER_ERROR',
         message: 'An unexpected error occurred.',
+        requestId: response.headers['x-request-id'],
       });
       expect(response.headers['content-type']).toMatch(/^application\/json/);
       expect(response.headers['content-disposition']).toBeUndefined();

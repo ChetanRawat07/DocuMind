@@ -6,6 +6,7 @@ import type { AppConfig } from '../config/app-config.js';
 import { APP_CONFIG } from '../config/app-config.module.js';
 import { DATABASE } from '../database/database.module.js';
 import type { DatabaseExecutor } from '../database/database.types.js';
+import { withCorrelation } from '../common/correlation/correlation.js';
 import { DocumentsRepository } from '../documents/documents.repository.js';
 import {
   DocumentAnalysisService,
@@ -73,7 +74,11 @@ export class DocumentProcessor {
     await this.releaseExpiredJobs();
     const job = await this.claim();
     if (!job) return false;
-    await this.process(job);
+    // Logs and audit entries of the job carry its id and the id of the request that queued it.
+    await withCorrelation(
+      { jobId: job.id, ...(job.requestId ? { requestId: job.requestId } : {}) },
+      () => this.process(job),
+    );
     return true;
   }
 
@@ -86,18 +91,43 @@ export class DocumentProcessor {
   }
 
   private async process(job: ProcessingJob): Promise<void> {
-    this.logger.log(`Job ${job.id} attempt ${job.attempts}/${job.maxAttempts} started`);
+    this.logger.log(`Job ${job.id} attempt ${job.attempts}/${job.maxAttempts} started`, {
+      documentId: job.documentId,
+      attempt: job.attempts,
+    });
     try {
       await this.jobs.setStage(job, 'text_extraction');
       // The file never changes, so text from an earlier attempt is reused.
       if (!(await this.texts.findForDocument(job.documentId))) {
+        const text = await this.textExtraction.extract(job.documentId);
         // null: the document was deleted, and its job with it.
-        if (!(await this.textExtraction.extract(job.documentId))) return;
+        if (!text) return;
+        await this.jobs.recordDurations(job, { textExtractionMs: text.durationMs });
+        this.logger.log('Text extracted', {
+          durationMs: text.durationMs,
+          pageCount: text.pageCount,
+          ocrPageCount: text.ocrPageCount,
+        });
       }
 
       await this.jobs.setStage(job, 'ai_extraction');
-      const analysis = await this.analysis.analyze(job.documentId);
+      const aiStarted = performance.now();
+      let analysis;
+      try {
+        analysis = await this.analysis.analyze(job.documentId);
+      } finally {
+        // Recorded for failed calls too: a slow timeout is what this column should show.
+        await this.jobs.recordDurations(job, { aiMs: performance.now() - aiStarted });
+      }
+      const aiMs = Math.round(performance.now() - aiStarted);
       if (!analysis) return;
+      this.logger.log('Document analyzed', {
+        durationMs: aiMs,
+        outcome: analysis.outcome,
+        ...(analysis.outcome === 'extracted'
+          ? { documentType: analysis.documentType, overallConfidence: analysis.overallConfidence }
+          : {}),
+      });
       if (analysis.outcome === 'unsupported') {
         await this.fail(job, UNSUPPORTED_DOCUMENT);
         return;
@@ -135,7 +165,10 @@ export class DocumentProcessor {
       return true;
     });
     if (finished) {
-      this.logger.log(`Job ${job.id} succeeded; ${complete ? 'completed' : 'needs review'}`);
+      this.logger.log(`Job ${job.id} succeeded; ${complete ? 'completed' : 'needs review'}`, {
+        attempt: job.attempts,
+        documentStatus: complete ? 'completed' : 'needs_review',
+      });
     } else {
       this.logger.warn(`Job ${job.id}: claim lost before finishing; result discarded`);
     }
@@ -157,15 +190,21 @@ export class DocumentProcessor {
       }
       return true;
     });
+    const fields = { errorCode: failure.code, attempt: job.attempts };
     if (!recorded) {
-      this.logger.warn(`Job ${job.id}: claim lost before recording failure ${failure.code}`);
+      this.logger.warn(
+        `Job ${job.id}: claim lost before recording failure ${failure.code}`,
+        fields,
+      );
     } else if (retryAt) {
       this.logger.warn(
         `Job ${job.id} attempt ${job.attempts}/${job.maxAttempts} failed (${failure.code}); retry at ${retryAt.toISOString()}`,
+        { ...fields, retryAt: retryAt.toISOString() },
       );
     } else {
       this.logger.warn(
         `Job ${job.id} failed (${failure.code}) on attempt ${job.attempts}/${job.maxAttempts}; not retried`,
+        fields,
       );
     }
   }
@@ -176,6 +215,11 @@ export class DocumentProcessor {
       for (const job of await this.jobs.releaseExpired(trx)) {
         this.logger.warn(
           `Job ${job.id}: lease expired after attempt ${job.attempts}; ${job.status}`,
+          {
+            jobId: job.id,
+            attempt: job.attempts,
+            errorCode: 'lease_expired',
+          },
         );
         if (job.status === 'failed') {
           await this.recordFailedDocument(job, 'lease_expired', trx);
@@ -198,7 +242,8 @@ export class DocumentProcessor {
         action: 'document.processing_failed',
         resourceType: 'document',
         resourceId: job.documentId,
-        requestId: null,
+        // From the job: a lease can expire outside the job's own context.
+        requestId: job.requestId,
         metadata: { jobId: job.id, errorCode, attempts: job.attempts },
       },
       trx,

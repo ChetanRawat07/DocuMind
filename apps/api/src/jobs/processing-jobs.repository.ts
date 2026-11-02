@@ -5,6 +5,7 @@ import {
 } from '@documind/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { type ExpressionBuilder, type Selectable, sql, type UpdateObject } from 'kysely';
+import { currentCorrelation } from '../common/correlation/correlation.js';
 import { DATABASE } from '../database/database.module.js';
 import type { Database, DatabaseExecutor } from '../database/database.types.js';
 import type { ProcessingJobs } from '../database/generated/database.js';
@@ -34,10 +35,40 @@ export interface ProcessingJob {
   readonly leaseExpiresAt: Date | null;
   readonly lastErrorCode: string | null;
   readonly lastErrorMessage: string | null;
+  /** The API request that queued the job; null for jobs queued by the system. */
+  readonly requestId: string | null;
+  /** Duration of each step in the attempt that last ran it; null until it has run. */
+  readonly textExtractionMs: number | null;
+  readonly aiMs: number | null;
   readonly startedAt: Date | null;
   readonly finishedAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
+}
+
+/** A job listed across the owner's documents, with the document's name. */
+export interface OwnedProcessingJob extends ProcessingJob {
+  readonly documentFilename: string;
+}
+
+/** Durations in milliseconds over the summary window; null without data. */
+export interface DurationStats {
+  readonly average: number | null;
+  readonly p95: number | null;
+}
+
+/** The owner's queue now, and how processing went over the last `windowDays`. */
+export interface ProcessingSummary {
+  readonly queued: number;
+  readonly running: number;
+  readonly oldestQueuedAt: Date | null;
+  readonly succeeded: number;
+  readonly failed: number;
+  readonly failuresByCode: readonly { readonly code: string; readonly count: number }[];
+  /** First start to finish of succeeded jobs, retries and backoff included. */
+  readonly processingMs: DurationStats;
+  readonly textExtractionMs: DurationStats;
+  readonly aiMs: DurationStats;
 }
 
 export interface EnqueueResult {
@@ -77,7 +108,8 @@ export class ProcessingJobsRepository {
     for (let attempt = 1; attempt <= MAX_ENQUEUE_ATTEMPTS; attempt += 1) {
       const inserted = await executor
         .insertInto('processing_jobs')
-        .values({ document_id: documentId })
+        // The request that queued the job follows it into the worker's logs and audit entries.
+        .values({ document_id: documentId, request_id: currentCorrelation().requestId ?? null })
         .onConflict((conflict) =>
           conflict
             .column('document_id')
@@ -126,6 +158,102 @@ export class ProcessingJobsRepository {
       .limit(limit)
       .execute();
     return rows.map(toProcessingJob);
+  }
+
+  /**
+   * The owner's most recent jobs across all documents, newest first,
+   * optionally of one status.
+   */
+  async listForOwner(
+    ownerId: string,
+    options: { readonly status?: ProcessingJobStatus | undefined; readonly limit: number },
+    executor = this.db,
+  ): Promise<OwnedProcessingJob[]> {
+    const rows = await executor
+      .selectFrom('processing_jobs')
+      .innerJoin('documents', 'documents.id', 'processing_jobs.document_id')
+      .selectAll('processing_jobs')
+      .select('documents.original_filename')
+      .where('documents.user_id', '=', ownerId)
+      .$if(options.status !== undefined, (query) =>
+        query.where('processing_jobs.status', '=', options.status as ProcessingJobStatus),
+      )
+      .orderBy('processing_jobs.created_at', 'desc')
+      .orderBy('processing_jobs.id', 'desc')
+      .limit(options.limit)
+      .execute();
+    return rows.map((row) => ({
+      ...toProcessingJob(row),
+      documentFilename: row.original_filename,
+    }));
+  }
+
+  /**
+   * Counts and durations for the owner's documents: the queue as it is now,
+   * and jobs that finished within the last `windowDays`.
+   */
+  async summaryForOwner(
+    ownerId: string,
+    windowDays: number,
+    executor = this.db,
+  ): Promise<ProcessingSummary> {
+    const recent = sql`j.finished_at > now() - make_interval(days => ${windowDays})`;
+    const succeededRecently = sql`j.status = 'succeeded' AND ${recent}`;
+    const processing = sql`extract(epoch FROM j.finished_at - j.started_at) * 1000`;
+    const stats = (
+      value: ReturnType<typeof sql>,
+      filter: ReturnType<typeof sql>,
+      name: string,
+    ) => sql`
+      avg(${value}) FILTER (WHERE ${filter}) AS ${sql.ref(`${name}_avg`)},
+      percentile_cont(0.95) WITHIN GROUP (ORDER BY ${value}) FILTER (WHERE ${filter})
+        AS ${sql.ref(`${name}_p95`)}`;
+
+    const totals = await sql<SummaryRow>`
+      SELECT
+        count(*) FILTER (WHERE j.status = 'queued') AS queued,
+        count(*) FILTER (WHERE j.status = 'running') AS running,
+        min(j.created_at) FILTER (WHERE j.status = 'queued') AS oldest_queued_at,
+        count(*) FILTER (WHERE ${succeededRecently}) AS succeeded,
+        count(*) FILTER (WHERE j.status = 'failed' AND ${recent}) AS failed,
+        ${stats(processing, succeededRecently, 'processing')},
+        ${stats(sql`j.text_extraction_ms`, recent, 'text_extraction')},
+        ${stats(sql`j.ai_ms`, recent, 'ai')}
+      FROM processing_jobs j
+      JOIN documents d ON d.id = j.document_id
+      WHERE d.user_id = ${ownerId}
+    `.execute(executor);
+    const failures = await sql<{ code: string; count: string }>`
+      SELECT j.last_error_code AS code, count(*) AS count
+      FROM processing_jobs j
+      JOIN documents d ON d.id = j.document_id
+      WHERE d.user_id = ${ownerId} AND j.status = 'failed' AND ${recent}
+        AND j.last_error_code IS NOT NULL
+      GROUP BY j.last_error_code
+      ORDER BY count(*) DESC, j.last_error_code
+      LIMIT 10
+    `.execute(executor);
+
+    // Aggregates always return one row.
+    const row = totals.rows[0] as SummaryRow;
+    const duration = (name: 'processing' | 'text_extraction' | 'ai'): DurationStats => ({
+      average: roundOrNull(row[`${name}_avg`]),
+      p95: roundOrNull(row[`${name}_p95`]),
+    });
+    return {
+      queued: Number(row.queued),
+      running: Number(row.running),
+      oldestQueuedAt: row.oldest_queued_at,
+      succeeded: Number(row.succeeded),
+      failed: Number(row.failed),
+      failuresByCode: failures.rows.map((failure) => ({
+        code: failure.code,
+        count: Number(failure.count),
+      })),
+      processingMs: duration('processing'),
+      textExtractionMs: duration('text_extraction'),
+      aiMs: duration('ai'),
+    };
   }
 
   /**
@@ -203,6 +331,27 @@ export class ProcessingJobsRepository {
     return result.numUpdatedRows > 0n;
   }
 
+  /** Records how long steps of this attempt took. Returns false when the worker no longer holds the job. */
+  async recordDurations(
+    job: ProcessingJob,
+    durations: { readonly textExtractionMs?: number; readonly aiMs?: number },
+    executor = this.db,
+  ): Promise<boolean> {
+    const changes = {
+      ...(durations.textExtractionMs !== undefined
+        ? { text_extraction_ms: Math.round(durations.textExtractionMs) }
+        : {}),
+      ...(durations.aiMs !== undefined ? { ai_ms: Math.round(durations.aiMs) } : {}),
+    };
+    if (Object.keys(changes).length === 0) return true;
+    const result = await executor
+      .updateTable('processing_jobs')
+      .set(changes)
+      .where(heldBy(job))
+      .executeTakeFirst();
+    return result.numUpdatedRows > 0n;
+  }
+
   async markSucceeded(job: ProcessingJob, executor = this.db): Promise<boolean> {
     return this.finishAttempt(
       job,
@@ -272,6 +421,25 @@ function errorColumns(error: JobError) {
   };
 }
 
+interface SummaryRow {
+  readonly queued: string;
+  readonly running: string;
+  readonly oldest_queued_at: Date | null;
+  readonly succeeded: string;
+  readonly failed: string;
+  readonly processing_avg: string | number | null;
+  readonly processing_p95: string | number | null;
+  readonly text_extraction_avg: string | number | null;
+  readonly text_extraction_p95: string | number | null;
+  readonly ai_avg: string | number | null;
+  readonly ai_p95: string | number | null;
+}
+
+/** Postgres returns bigint counts and numeric averages as strings. */
+function roundOrNull(value: string | number | null): number | null {
+  return value === null ? null : Math.round(Number(value));
+}
+
 function toProcessingJob(row: Selectable<ProcessingJobs>): ProcessingJob {
   return {
     id: row.id,
@@ -287,6 +455,9 @@ function toProcessingJob(row: Selectable<ProcessingJobs>): ProcessingJob {
     leaseExpiresAt: row.lease_expires_at,
     lastErrorCode: row.last_error_code,
     lastErrorMessage: row.last_error_message,
+    requestId: row.request_id,
+    textExtractionMs: row.text_extraction_ms,
+    aiMs: row.ai_ms,
     startedAt: row.started_at,
     finishedAt: row.finished_at,
     createdAt: row.created_at,

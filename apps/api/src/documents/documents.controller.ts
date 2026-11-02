@@ -35,6 +35,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
 import { CurrentUser } from '../auth/current-user.decorator.js';
+import { REQUEST_ID_HEADER } from '../http/request-correlation.js';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe.js';
 import type { ProcessingJob } from '../jobs/processing-jobs.repository.js';
 import type { User } from '../users/users.repository.js';
@@ -200,8 +201,14 @@ export class DocumentsController {
       response.destroy();
       return;
     }
+    // Read from the header: this runs in a stream callback, outside the request's async context.
+    const requestId = response.getHeader(REQUEST_ID_HEADER);
     const body: ApiErrorResponse = {
-      error: { code: 'INTERNAL_SERVER_ERROR', message: 'An unexpected error occurred.' },
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        message: 'An unexpected error occurred.',
+        ...(typeof requestId === 'string' ? { requestId } : {}),
+      },
     };
     // Nest has already set the file's headers; json() would keep its Content-Type.
     for (const header of ['Content-Type', 'Content-Length', 'Content-Disposition']) {
@@ -271,7 +278,7 @@ export function toDocumentDto(document: Document): DocumentDto {
   };
 }
 
-function toProcessingJobDto(job: ProcessingJob): ProcessingJobDto {
+export function toProcessingJobDto(job: ProcessingJob): ProcessingJobDto {
   return {
     id: job.id,
     status: job.status,
@@ -279,6 +286,9 @@ function toProcessingJobDto(job: ProcessingJob): ProcessingJobDto {
     attempts: job.attempts,
     maxAttempts: job.maxAttempts,
     errorCode: job.lastErrorCode,
+    requestId: job.requestId,
+    textExtractionMs: job.textExtractionMs,
+    aiMs: job.aiMs,
     availableAt: job.availableAt.toISOString(),
     startedAt: job.startedAt?.toISOString() ?? null,
     finishedAt: job.finishedAt?.toISOString() ?? null,

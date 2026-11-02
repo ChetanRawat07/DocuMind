@@ -75,7 +75,6 @@ export class TextExtractionService {
             action: 'document.text_extracted',
             resourceType: 'document',
             resourceId: documentId,
-            requestId: null,
             // Counts only: audit entries never hold document content.
             metadata: {
               pageCount: summary.pageCount,

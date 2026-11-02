@@ -197,7 +197,6 @@ export class DocumentAnalysisService {
         action: 'document.fields_extracted',
         resourceType: 'document',
         resourceId: analysis.documentId,
-        requestId: null,
         // Scores and issue codes only: audit entries never hold document content.
         metadata: {
           jobId,

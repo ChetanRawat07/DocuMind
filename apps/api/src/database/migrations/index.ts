@@ -4,6 +4,7 @@ import * as usersEmailNotUnique from './20261029140000_users_email_not_unique.js
 import * as documentTexts from './20261030120000_document_texts.js';
 import * as extractionDetails from './20261102120000_extraction_details.js';
 import * as extractionReviews from './20261102150000_extraction_reviews.js';
+import * as observability from './20261103120000_observability.js';
 
 /**
  * Explicit migration registry. Kysely runs migrations in key order, so keys
@@ -17,4 +18,5 @@ export const migrations: Record<string, Migration> = {
   '20261030120000_document_texts': documentTexts,
   '20261102120000_extraction_details': extractionDetails,
   '20261102150000_extraction_reviews': extractionReviews,
+  '20261103120000_observability': observability,
 };

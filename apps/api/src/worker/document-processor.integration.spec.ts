@@ -158,6 +158,48 @@ describe('DocumentProcessor', () => {
     expect(await auditActions()).toEqual(['document.fields_extracted']);
   });
 
+  it('carries the request that queued the job into its audit entries, and records step durations', async () => {
+    await db
+      .updateTable('processing_jobs')
+      .set({ request_id: 'req-upload' })
+      .where('id', '=', jobId)
+      .execute();
+    extract.mockImplementation(async () => {
+      await storeText();
+      return { documentId, pageCount: 1, ocrPageCount: 1, characterCount: 1, durationMs: 1234 };
+    });
+
+    await processorWith(new ScriptedProvider(...PO_ANSWERS)).runNext();
+
+    const entries = await db
+      .selectFrom('audit_logs')
+      .select(['action', 'request_id'])
+      .orderBy('id')
+      .execute();
+    expect(entries).toEqual([
+      { action: 'document.fields_extracted', request_id: 'req-upload' },
+      { action: 'document.approved', request_id: 'req-upload' },
+    ]);
+    expect(await job()).toMatchObject({ text_extraction_ms: 1234 });
+    expect((await job()).ai_ms).toBeGreaterThanOrEqual(0);
+  });
+
+  it('records the AI step duration when it fails, keeping the text extraction time', async () => {
+    await storeText();
+    await db
+      .updateTable('processing_jobs')
+      .set({ text_extraction_ms: 900 })
+      .where('id', '=', jobId)
+      .execute();
+
+    await processorWith(
+      new ScriptedProvider(new AiProviderError('unavailable', 'scripted', 'down')),
+    ).runNext();
+
+    expect(await job()).toMatchObject({ status: 'queued', text_extraction_ms: 900 });
+    expect((await job()).ai_ms).not.toBeNull();
+  });
+
   it('extracts the text first when the document has none yet', async () => {
     let statusWhileRunning: string | undefined;
     extract.mockImplementation(async () => {
@@ -265,7 +307,14 @@ describe('DocumentProcessor', () => {
 
     await processorWith(new ScriptedProvider(...PO_ANSWERS)).runNext();
 
-    expect(await job()).toMatchObject({ status: 'running', locked_by: 'worker-b', attempts: 2 });
+    expect(await job()).toMatchObject({
+      status: 'running',
+      locked_by: 'worker-b',
+      attempts: 2,
+      // The stale worker's timings are fenced out too.
+      text_extraction_ms: null,
+      ai_ms: null,
+    });
     expect(await extractionCount()).toBe(0);
   });
 
@@ -283,7 +332,7 @@ describe('DocumentProcessor', () => {
   it('fails the job of a worker that crashed on its last attempt', async () => {
     await db
       .updateTable('processing_jobs')
-      .set({ max_attempts: 1 })
+      .set({ max_attempts: 1, request_id: 'req-upload' })
       .where('id', '=', jobId)
       .execute();
     await jobs.claimNext('crashed-worker', 60_000);
@@ -294,6 +343,10 @@ describe('DocumentProcessor', () => {
     expect(await job()).toMatchObject({ status: 'failed', last_error_code: 'lease_expired' });
     expect((await document()).status).toBe('failed');
     expect(await auditActions()).toEqual(['document.processing_failed']);
+    // Released outside the job's own run, but still traced to the request that queued it.
+    expect(
+      (await db.selectFrom('audit_logs').select('request_id').executeTakeFirstOrThrow()).request_id,
+    ).toBe('req-upload');
   });
 
   it('stops quietly when the document is deleted while it runs', async () => {

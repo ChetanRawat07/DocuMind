@@ -98,6 +98,7 @@ export interface ExtractionReviews {
 }
 
 export interface ProcessingJobs {
+  ai_ms: number | null;
   attempts: Generated<number>;
   available_at: Generated<Timestamp>;
   created_at: Generated<Timestamp>;
@@ -110,9 +111,11 @@ export interface ProcessingJobs {
   locked_at: Timestamp | null;
   locked_by: string | null;
   max_attempts: Generated<number>;
+  request_id: string | null;
   stage: string | null;
   started_at: Timestamp | null;
   status: Generated<string>;
+  text_extraction_ms: number | null;
   updated_at: Generated<Timestamp>;
 }
 

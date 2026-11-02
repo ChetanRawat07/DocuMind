@@ -32,7 +32,6 @@ export class UserProvisioningService {
             action: 'user.registered',
             resourceType: 'user',
             resourceId: user.id,
-            requestId: null,
             metadata: {},
           },
           trx,
