@@ -79,6 +79,7 @@ describe('authentication and authorization (HTTP)', () => {
       expect(apiErrorResponseSchema.parse(response.body).error).toEqual({
         code: 'UNAUTHORIZED',
         message: 'Authentication required',
+        requestId: response.headers['x-request-id'],
       });
       expect(response.headers['www-authenticate']).toBe('Bearer realm="documind"');
     });
@@ -249,7 +250,13 @@ describe('authentication and authorization (HTTP)', () => {
         .set(bearer(bob.token))
         .expect(404);
 
-      expect(foreign.body).toEqual(missing.body);
+      // Identical but for the request id, which is unique to each response.
+      const withoutRequestId = (body: unknown) => ({
+        ...apiErrorResponseSchema.parse(body).error,
+        requestId: undefined,
+      });
+      expect(withoutRequestId(foreign.body)).toEqual(withoutRequestId(missing.body));
+      expect(Object.keys(foreign.body as object)).toEqual(Object.keys(missing.body as object));
     });
 
     it('lists only the caller’s documents', async () => {

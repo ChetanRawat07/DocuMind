@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
 import type { ApiErrorResponse } from '@documind/shared';
+import { currentCorrelation } from '../correlation/correlation.js';
 
 const GENERIC_SERVER_ERROR_MESSAGE = 'An unexpected error occurred.';
 
@@ -33,10 +34,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
       );
     }
 
+    const { requestId } = currentCorrelation();
     const body: ApiErrorResponse = {
       error: {
         code: errorCodeFor(status),
         message: clientError?.message ?? GENERIC_SERVER_ERROR_MESSAGE,
+        ...(requestId ? { requestId } : {}),
       },
     };
 

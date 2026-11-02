@@ -4,6 +4,7 @@ import type { NextFunction, Request, Response } from 'express';
 import helmet from 'helmet';
 import { AllExceptionsFilter } from '../common/filters/all-exceptions.filter.js';
 import type { AppConfig } from '../config/app-config.js';
+import { correlateRequest, REQUEST_ID_HEADER } from './request-correlation.js';
 
 export const API_PREFIX = 'api/v1';
 
@@ -13,11 +14,14 @@ export const API_PREFIX = 'api/v1';
  * the running server.
  */
 export function configureHttpApp(app: INestApplication, config: AppConfig): void {
+  // First, so every response, even an early 404, carries a request id.
+  app.use(correlateRequest);
   app.use(helmet());
   app.enableCors({
     // An empty list disables cross-origin access entirely, which is the safe default.
     origin: [...config.http.corsAllowedOrigins],
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
+    exposedHeaders: [REQUEST_ID_HEADER],
   });
   app.use(rejectOutsideApiPrefix);
   app.use(preventCaching);

@@ -1,7 +1,10 @@
+import { Logger } from '@nestjs/common';
 import { z } from 'zod';
 import { AiProviderError } from './ai-error.js';
 import type { AiProvider, AiResponse } from './ai-provider.js';
 import type { PromptTemplate } from './prompt-template.js';
+
+const logger = new Logger('AI');
 
 export interface StructuredResult<TOutput> {
   readonly data: TOutput;
@@ -24,13 +27,36 @@ export async function generateStructured<TInput, TOutput>(
   input: TInput,
   options: { signal?: AbortSignal } = {},
 ): Promise<StructuredResult<TOutput>> {
-  const response = await provider.generate({
-    system: template.system,
-    user: template.render(input),
-    jsonSchema: z.toJSONSchema(template.output, { target: 'draft-7' }),
-    maxOutputTokens: template.maxOutputTokens,
-    temperature: template.temperature,
-    ...(options.signal ? { signal: options.signal } : {}),
+  const prompt = `${template.id}@${template.version}`;
+  const started = performance.now();
+  let response: AiResponse;
+  try {
+    response = await provider.generate({
+      system: template.system,
+      user: template.render(input),
+      jsonSchema: z.toJSONSchema(template.output, { target: 'draft-7' }),
+      maxOutputTokens: template.maxOutputTokens,
+      temperature: template.temperature,
+      ...(options.signal ? { signal: options.signal } : {}),
+    });
+  } catch (error) {
+    logger.warn('AI call failed', {
+      prompt,
+      provider: provider.name,
+      model: provider.model,
+      durationMs: Math.round(performance.now() - started),
+      errorKind: error instanceof AiProviderError ? error.kind : 'unknown',
+    });
+    throw error;
+  }
+  // Sizes and timings only: prompts and answers can hold document content.
+  logger.log('AI call', {
+    prompt,
+    provider: response.provider,
+    model: response.model,
+    durationMs: response.durationMs,
+    inputTokens: response.inputTokens,
+    outputTokens: response.outputTokens,
   });
 
   let json: unknown;
@@ -53,5 +79,5 @@ export async function generateStructured<TInput, TOutput>(
       `The answer does not match the schema at: ${paths.join(', ')}`,
     );
   }
-  return { data: result.data, response, prompt: `${template.id}@${template.version}` };
+  return { data: result.data, response, prompt };
 }
