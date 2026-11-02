@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { insertDocument, insertUser } from '../../test/support/factories.js';
 import {
   classifiedAs,
+  field,
   PO_ANSWER,
   PO_TEXT,
   ScriptedProvider,
@@ -16,6 +17,8 @@ import { DocumentsRepository } from '../documents/documents.repository.js';
 import { DocumentAnalysisService } from '../extraction/document-analysis.service.js';
 import { DocumentExtractionsRepository } from '../extraction/document-extractions.repository.js';
 import { ProcessingJobsRepository } from '../jobs/processing-jobs.repository.js';
+import { ExtractionReviewsRepository } from '../review/extraction-reviews.repository.js';
+import { ReviewService } from '../review/review.service.js';
 import { DocumentTextsRepository } from '../text-extraction/document-texts.repository.js';
 import { TextExtractionError } from '../text-extraction/text-extraction-error.js';
 import type { TextExtractionService } from '../text-extraction/text-extraction.service.js';
@@ -23,6 +26,14 @@ import { DocumentProcessor } from './document-processor.js';
 
 const CONFIG = { ai: { timeoutMs: 1000 } } as AppConfig;
 const PO_ANSWERS = [classifiedAs('purchase_order', 'PURCHASE ORDER'), PO_ANSWER];
+/** The buyer is quoted from a line that is not in the document, so it scores 0.3. */
+const UNCERTAIN_PO_ANSWERS = [
+  classifiedAs('purchase_order', 'PURCHASE ORDER'),
+  {
+    ...PO_ANSWER,
+    fields: { ...PO_ANSWER.fields, buyerName: field('Globex Ltd', 'Bill to: Globex') },
+  },
+];
 
 describe('DocumentProcessor', () => {
   let db: DatabaseExecutor;
@@ -33,8 +44,9 @@ describe('DocumentProcessor', () => {
   let jobId: string;
   let extract: ReturnType<typeof vi.fn<TextExtractionService['extract']>>;
 
-  const processorWith = (provider: ScriptedProvider) =>
-    new DocumentProcessor(
+  const processorWith = (provider: ScriptedProvider) => {
+    const extractions = new DocumentExtractionsRepository(db);
+    return new DocumentProcessor(
       CONFIG,
       db,
       jobs,
@@ -45,12 +57,20 @@ describe('DocumentProcessor', () => {
         db,
         documents,
         texts,
-        new DocumentExtractionsRepository(db),
+        extractions,
         new AuditLogsRepository(db),
         provider,
       ),
       new AuditLogsRepository(db),
+      new ReviewService(
+        db,
+        documents,
+        extractions,
+        new ExtractionReviewsRepository(db),
+        new AuditLogsRepository(db),
+      ),
     );
+  };
 
   const storeText = (text = PO_TEXT) =>
     texts.replace({
@@ -101,7 +121,7 @@ describe('DocumentProcessor', () => {
     extract = vi.fn<TextExtractionService['extract']>();
   });
 
-  it('processes a queued document into an extraction awaiting review', async () => {
+  it('completes a confident extraction without review', async () => {
     await storeText();
     const processor = processorWith(new ScriptedProvider(...PO_ANSWERS));
 
@@ -109,7 +129,7 @@ describe('DocumentProcessor', () => {
 
     expect(await job()).toMatchObject({ status: 'succeeded', attempts: 1, locked_by: null });
     expect(await document()).toMatchObject({
-      status: 'needs_review',
+      status: 'completed',
       document_type: 'purchase_order',
     });
     expect((await document()).processed_at).not.toBeNull();
@@ -121,6 +141,21 @@ describe('DocumentProcessor', () => {
     // The text from an earlier attempt is reused rather than extracted again.
     expect(extract).not.toHaveBeenCalled();
     expect(await processor.runNext()).toBe(false);
+    expect(
+      await db.selectFrom('extraction_reviews').selectAll().executeTakeFirstOrThrow(),
+    ).toMatchObject({ decision: 'approved', decided_by: null, fields: {} });
+    expect(await auditActions()).toEqual(['document.fields_extracted', 'document.approved']);
+  });
+
+  it('sends an extraction with a low-confidence field to review', async () => {
+    await storeText();
+
+    await processorWith(new ScriptedProvider(...UNCERTAIN_PO_ANSWERS)).runNext();
+
+    expect(await job()).toMatchObject({ status: 'succeeded' });
+    expect((await document()).status).toBe('needs_review');
+    expect(await db.selectFrom('extraction_reviews').selectAll().execute()).toEqual([]);
+    expect(await auditActions()).toEqual(['document.fields_extracted']);
   });
 
   it('extracts the text first when the document has none yet', async () => {
@@ -242,7 +277,7 @@ describe('DocumentProcessor', () => {
     await processorWith(new ScriptedProvider(...PO_ANSWERS)).runNext();
 
     expect(await job()).toMatchObject({ status: 'succeeded', attempts: 2 });
-    expect((await document()).status).toBe('needs_review');
+    expect((await document()).status).toBe('completed');
   });
 
   it('fails the job of a worker that crashed on its last attempt', async () => {

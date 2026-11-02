@@ -98,16 +98,22 @@ export class DocumentsRepository {
     return toDocument(row);
   }
 
+  /**
+   * `forUpdate` locks the row until the caller's transaction ends, so
+   * concurrent changes to the same document (review actions) run one at a time.
+   */
   async findByIdForOwner(
     ownerId: string,
     documentId: string,
     executor = this.db,
+    { forUpdate = false } = {},
   ): Promise<Document | null> {
     const row = await executor
       .selectFrom('documents')
       .selectAll()
       .where('id', '=', documentId)
       .where('user_id', '=', ownerId)
+      .$if(forUpdate, (query) => query.forUpdate())
       .executeTakeFirst();
     return row ? toDocument(row) : null;
   }
@@ -160,9 +166,10 @@ export class DocumentsRepository {
 
   /**
    * Marks the owner's document queued again, but only from a status a user
-   * may retry: `failed`, or `uploaded` (stored before processing existed).
-   * Documents in review or completed are refused, so a retry can never
-   * replace reviewed results. Returns null when nothing was changed.
+   * may retry: `failed`, `rejected` (a reviewer found the result unusable), or
+   * `uploaded` (stored before processing existed). Documents in review or
+   * completed are refused, so a retry can never replace reviewed results.
+   * Returns null when nothing was changed.
    */
   async requeueForOwner(
     ownerId: string,
@@ -174,7 +181,7 @@ export class DocumentsRepository {
       .set({ status: 'queued', processed_at: null })
       .where('id', '=', documentId)
       .where('user_id', '=', ownerId)
-      .where('status', 'in', ['uploaded', 'failed'])
+      .where('status', 'in', ['uploaded', 'failed', 'rejected'])
       .returningAll()
       .executeTakeFirst();
     return row ? toDocument(row) : null;

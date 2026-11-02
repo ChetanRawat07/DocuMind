@@ -146,7 +146,7 @@ export class DocumentsService {
   }
 
   /**
-   * Queues the owner's failed (or never queued) document again. Idempotent:
+   * Queues the owner's failed, rejected (or never queued) document again. Idempotent:
    * when the document is already queued or processing, its active job is
    * returned instead of a new one, so a repeated request is harmless.
    * Returns `already_processed` for a document in review or completed, and

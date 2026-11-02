@@ -3,6 +3,7 @@ import { AuditModule } from './audit/audit.module.js';
 import { DocumentsModule } from './documents/documents.module.js';
 import { ExtractionModule } from './extraction/extraction.module.js';
 import { JobsModule } from './jobs/jobs.module.js';
+import { ReviewModule } from './review/review.module.js';
 import { StorageModule } from './storage/storage.module.js';
 import { TextExtractionModule } from './text-extraction/text-extraction.module.js';
 import { UsersModule } from './users/users.module.js';
@@ -14,6 +15,7 @@ export const SHARED_FEATURE_MODULES = [
   DocumentsModule,
   JobsModule,
   ExtractionModule,
+  ReviewModule,
   AuditModule,
   StorageModule,
   TextExtractionModule,

@@ -1,4 +1,4 @@
-import type { DocumentType } from '@documind/shared';
+import type { DocumentType, ValidationIssueCode } from '@documind/shared';
 import type { ExtractedPage } from '../text-extraction/text-extractor.js';
 import { locateEvidence, valueMatchesEvidence } from './evidence.js';
 import {
@@ -33,20 +33,6 @@ export const CONFIDENCE = {
 
 /** Rounding differences up to a few cents are not an inconsistency. */
 const AMOUNT_TOLERANCE = 0.05;
-
-export const VALIDATION_ISSUE_CODES = [
-  'missing_required_field',
-  'evidence_not_found',
-  'value_not_in_evidence',
-  'date_order',
-  'totals_mismatch',
-  'line_items_total_mismatch',
-  'line_item_arithmetic',
-  'non_positive_amount',
-  'too_few_parties',
-  'text_truncated',
-] as const;
-export type ValidationIssueCode = (typeof VALIDATION_ISSUE_CODES)[number];
 
 /** Codes and field names only, never values: issues are logged and audited. */
 export interface ValidationIssue {

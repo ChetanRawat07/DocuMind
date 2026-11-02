@@ -90,7 +90,8 @@ export const EXTRACTION_SCHEMAS: Readonly<Record<DocumentType, ExtractionSchema>
 const MAX_AMOUNT = 1e12;
 const text = z.string().max(300);
 const amount = z.number().min(-MAX_AMOUNT).max(MAX_AMOUNT);
-const VALUE_SCHEMAS: Record<FieldKind, z.ZodType<string | number>> = {
+/** What a scalar value may be: for the model's answer and for a reviewer's correction. */
+export const FIELD_VALUE_SCHEMAS: Readonly<Record<FieldKind, z.ZodType<string | number>>> = {
   text,
   date: z.iso.date(),
   amount,
@@ -144,7 +145,7 @@ export function modelOutputSchema(schema: ExtractionSchema): z.ZodType<ModelExtr
   const fields = Object.fromEntries(
     Object.entries(schema.fields).map(([name, spec]) => [
       name,
-      z.object({ value: VALUE_SCHEMAS[spec.kind].nullable(), evidence: text.nullable() }),
+      z.object({ value: FIELD_VALUE_SCHEMAS[spec.kind].nullable(), evidence: text.nullable() }),
     ]),
   );
   return schema.list.name === 'lineItems'

@@ -15,6 +15,8 @@ import {
   type ProcessingJob,
   ProcessingJobsRepository,
 } from '../jobs/processing-jobs.repository.js';
+import { canSkipReview } from '../review/review-fields.js';
+import { ReviewService } from '../review/review.service.js';
 import { DocumentTextsRepository } from '../text-extraction/document-texts.repository.js';
 import { TextExtractionService } from '../text-extraction/text-extraction.service.js';
 import {
@@ -41,8 +43,9 @@ export function leaseDurationMs(aiTimeoutMs: number): number {
  *
  * - Text extraction is skipped when the document's text already exists.
  * - The extraction is saved, the job marked succeeded and the document moved
- *   to review in one transaction, fenced by the job's claim. A worker that
- *   lost its claim therefore saves nothing; AI calls may repeat, results not.
+ *   to review (or completed, when confident enough) in one transaction, fenced
+ *   by the job's claim. A worker that lost its claim therefore saves nothing;
+ *   AI calls may repeat, results not.
  */
 @Injectable()
 export class DocumentProcessor {
@@ -60,6 +63,7 @@ export class DocumentProcessor {
     private readonly textExtraction: TextExtractionService,
     private readonly analysis: DocumentAnalysisService,
     private readonly auditLogs: AuditLogsRepository,
+    private readonly review: ReviewService,
   ) {
     this.leaseMs = leaseDurationMs(config.ai.timeoutMs);
   }
@@ -111,17 +115,27 @@ export class DocumentProcessor {
     }
   }
 
-  /** Every extraction goes to review; Phase 10 decides which may complete on their own. */
+  /** A confident, issue-free extraction completes on its own; anything else waits for review. */
   private async succeed(job: ProcessingJob, analysis: ExtractedAnalysis): Promise<void> {
+    const complete = canSkipReview(analysis);
     const finished = await this.db.transaction().execute(async (trx) => {
       // First, so the job row is locked and still ours before anything is saved.
       if (!(await this.jobs.markSucceeded(job, trx))) return false;
-      await this.analysis.save(job.id, analysis, trx);
-      await this.documents.setStatus(job.documentId, 'needs_review', trx);
+      // Inside the caller's transaction save never returns null: a deleted document throws.
+      const saved = await this.analysis.save(job.id, analysis, trx);
+      await this.documents.setStatus(job.documentId, complete ? 'completed' : 'needs_review', trx);
+      if (complete && saved) {
+        await this.review.approveAutomatically(
+          job.documentId,
+          saved.extraction.id,
+          analysis.overallConfidence,
+          trx,
+        );
+      }
       return true;
     });
     if (finished) {
-      this.logger.log(`Job ${job.id} succeeded`);
+      this.logger.log(`Job ${job.id} succeeded; ${complete ? 'completed' : 'needs review'}`);
     } else {
       this.logger.warn(`Job ${job.id}: claim lost before finishing; result discarded`);
     }
