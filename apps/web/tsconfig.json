@@ -6,7 +6,9 @@
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "types": ["vite/client", "node"],
-    "noEmit": true
+    "noEmit": true,
+    // vite.config.ts is loaded by Node, which needs the extension on its local import.
+    "allowImportingTsExtensions": true
   },
   "include": ["src", "vite.config.ts"]
 }
