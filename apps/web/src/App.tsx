@@ -2,8 +2,8 @@ import { Route, Routes } from 'react-router';
 import { RequireAuth } from './auth/require-auth';
 import { AppShell } from './layout/app-shell';
 import { NAV_ITEMS } from './layout/navigation';
+import { AnalyticsPage } from './pages/analytics-page';
 import { AuditLogsPage } from './pages/audit-logs-page';
-import { ComingSoonPage } from './pages/coming-soon-page';
 import { DashboardPage } from './pages/dashboard-page';
 import { DocumentDetailPage } from './pages/document-detail-page';
 import { DocumentsPage } from './pages/documents-page';
@@ -18,7 +18,6 @@ import { SignupPage } from './pages/signup-page';
 
 /**
  * Route table. Rendered inside a router and an AuthProvider (see main.tsx).
- * Coming-soon pages are replaced by the phases that build them.
  */
 export function App() {
   return (
@@ -39,10 +38,7 @@ export function App() {
         <Route path={`${NAV_ITEMS.documents.path}/:documentId`} element={<DocumentDetailPage />} />
         <Route path={NAV_ITEMS.processing.path} element={<ProcessingPage />} />
         <Route path={NAV_ITEMS.review.path} element={<ReviewPage />} />
-        <Route
-          path={NAV_ITEMS.analytics.path}
-          element={<ComingSoonPage item={NAV_ITEMS.analytics} />}
-        />
+        <Route path={NAV_ITEMS.analytics.path} element={<AnalyticsPage />} />
         <Route path={NAV_ITEMS.auditLogs.path} element={<AuditLogsPage />} />
         <Route path={NAV_ITEMS.settings.path} element={<SettingsPage />} />
         <Route path="*" element={<NotFoundPage />} />

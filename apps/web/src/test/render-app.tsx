@@ -1,4 +1,4 @@
-import type { CurrentUser, DocumentDto } from '@documind/shared';
+import type { Analytics, CurrentUser, DocumentDto } from '@documind/shared';
 import type { Session } from '@supabase/supabase-js';
 import { render } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
@@ -13,6 +13,41 @@ export const TEST_USER: CurrentUser = {
   displayName: 'Ada',
   createdAt: '2026-10-29T10:00:00.000Z',
 };
+
+/** Analytics of a user with nothing processed in the window; overrides add the data a test needs. */
+export function testAnalytics(overrides: Partial<Analytics> = {}): Analytics {
+  return {
+    days: 30,
+    timezone: 'UTC',
+    since: '2026-09-30',
+    documents: { uploaded: 0, processed: 0, succeeded: 0, failed: 0, needsReview: 0 },
+    successRate: null,
+    failureRate: null,
+    processingMs: { average: null, p95: null },
+    documentTypes: [],
+    confidence: [
+      { bucket: 'below_50', count: 0 },
+      { bucket: '50_to_70', count: 0 },
+      { bucket: '70_to_90', count: 0 },
+      { bucket: '90_and_above', count: 0 },
+    ],
+    review: {
+      extracted: 0,
+      autoCompleted: 0,
+      approvedAfterReview: 0,
+      rejected: 0,
+      pending: 0,
+      rate: null,
+    },
+    corrections: { reviewedFields: 0, correctedFields: 0, rate: null },
+    volume: Array.from({ length: 30 }, (_, index) => ({
+      date: new Date(Date.UTC(2026, 8, 30 + index)).toISOString().slice(0, 10),
+      processed: 0,
+      failed: 0,
+    })),
+    ...overrides,
+  };
+}
 
 export function testDocument(overrides: Partial<DocumentDto> = {}): DocumentDto {
   return {
@@ -42,6 +77,7 @@ export function stubApi(
     const custom = handle(url, init);
     if (custom) return Promise.resolve(custom);
     if (url === '/api/v1/me') return Promise.resolve(Response.json(TEST_USER));
+    if (url.startsWith('/api/v1/analytics')) return Promise.resolve(Response.json(testAnalytics()));
     // A document that has not been processed has no extraction, as in the API.
     if (url.endsWith('/extraction')) return Promise.resolve(apiErrorResponse(404));
     if (url.endsWith('/activity')) return Promise.resolve(Response.json({ items: [] }));

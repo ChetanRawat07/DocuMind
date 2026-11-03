@@ -1,8 +1,9 @@
-import { documentListResponseSchema } from '@documind/shared';
-import { Activity, ArrowRight, FileText, PieChart } from 'lucide-react';
-import { useState } from 'react';
+import { type Analytics, analyticsSchema, documentListResponseSchema } from '@documind/shared';
+import { ArrowRight, FileText } from 'lucide-react';
+import { type ReactNode, useState } from 'react';
 import { Link } from 'react-router';
 import { useCurrentUser } from '../auth/current-user';
+import { DocumentTypes, ProcessingVolume } from '../components/analytics/analytics-cards';
 import { DocumentTable } from '../components/documents/document-table';
 import { buttonClasses } from '../components/ui/button-styles';
 import { Card, CardHeader } from '../components/ui/card';
@@ -10,21 +11,78 @@ import { EmptyState, ErrorState, Skeleton } from '../components/ui/feedback';
 import { PageHeader } from '../components/ui/page-header';
 import { StatCard } from '../components/ui/stat-card';
 import { NAV_ITEMS } from '../layout/navigation';
+import { analyticsPath, correctionRateKpi } from '../lib/analytics-view';
+import { formatPercent } from '../lib/format';
 import { greetingFor } from '../lib/greeting';
-import { useApiQuery } from '../services/use-api-query';
+import { type QueryState, useApiQuery } from '../services/use-api-query';
 
 export const RECENT_DOCUMENTS_LIMIT = 5;
 
-/**
- * Metrics have no API until analytics is built, so each card shows an
- * explicit "no data yet" state rather than invented numbers.
- */
-const METRICS = [
-  { label: 'Documents' },
-  { label: 'Processed' },
-  { label: 'Extraction accuracy' },
-  { label: 'Needs review' },
-] as const;
+/** The dashboard's window; the Analytics page offers the others. */
+export const DASHBOARD_RANGE = 30;
+
+function KeyMetrics({ analytics }: { analytics: QueryState<Analytics> }) {
+  if (analytics.status !== 'success') {
+    // Loading or failed: dashes rather than invented numbers; the charts below show the error.
+    return (
+      <>
+        {['Documents', 'Processed', 'Correction rate', 'Needs review'].map((label) => (
+          <StatCard
+            key={label}
+            label={label}
+            value={null}
+            hint={analytics.status === 'loading' ? 'Loading…' : 'Unavailable'}
+          />
+        ))}
+      </>
+    );
+  }
+  const { documents, successRate } = analytics.data;
+  const corrections = correctionRateKpi(analytics.data);
+  return (
+    <>
+      <StatCard
+        label="Documents"
+        value={documents.uploaded.toLocaleString()}
+        hint={`Uploaded in the last ${String(DASHBOARD_RANGE)} days`}
+      />
+      <StatCard
+        label="Processed"
+        value={documents.processed.toLocaleString()}
+        hint={
+          successRate === null ? 'None finished yet' : `${formatPercent(successRate)} succeeded`
+        }
+      />
+      <StatCard label="Correction rate" value={corrections.value} hint={corrections.hint} />
+      <StatCard
+        label="Needs review"
+        value={documents.needsReview.toLocaleString()}
+        hint="Waiting now"
+      />
+    </>
+  );
+}
+
+function ChartCard({
+  analytics,
+  children,
+}: {
+  analytics: QueryState<Analytics> & { retry: () => void };
+  children: (data: Analytics) => ReactNode;
+}) {
+  if (analytics.status === 'loading') return <Skeleton className="mt-4 h-52" />;
+  if (analytics.status === 'error') {
+    return (
+      <ErrorState
+        title="Could not load analytics"
+        description="Check your connection and try again."
+        onRetry={analytics.retry}
+        error={analytics.error}
+      />
+    );
+  }
+  return <div className="mt-4">{children(analytics.data)}</div>;
+}
 
 function RecentDocuments({ now }: { now: Date }) {
   const recent = useApiQuery(
@@ -85,6 +143,7 @@ export function DashboardPage() {
   // Read the clock once per visit; render stays pure.
   const [now] = useState(() => new Date());
   const greeting = greetingFor(now);
+  const analytics = useApiQuery(analyticsPath(DASHBOARD_RANGE), analyticsSchema);
 
   return (
     <>
@@ -99,9 +158,7 @@ export function DashboardPage() {
           Key metrics
         </h2>
         <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-          {METRICS.map((metric) => (
-            <StatCard key={metric.label} label={metric.label} value={null} hint="No data yet" />
-          ))}
+          <KeyMetrics analytics={analytics} />
         </div>
       </section>
 
@@ -109,21 +166,20 @@ export function DashboardPage() {
         <Card className="p-5 lg:col-span-3">
           <CardHeader
             title="Processing activity"
-            description="Documents processed over the last 30 days"
+            description={`Documents processed over the last ${String(DASHBOARD_RANGE)} days`}
           />
-          <EmptyState
-            icon={Activity}
-            title="No processing activity yet"
-            description="Daily processing volume will appear here once documents are processed."
-          />
+          <ChartCard analytics={analytics}>
+            {(data) => <ProcessingVolume analytics={data} />}
+          </ChartCard>
         </Card>
         <Card className="p-5 lg:col-span-2">
-          <CardHeader title="Document types" description="Documents processed this month" />
-          <EmptyState
-            icon={PieChart}
-            title="No classified documents yet"
-            description="The mix of invoices, contracts and purchase orders will appear here."
+          <CardHeader
+            title="Document types"
+            description={`Documents processed over the last ${String(DASHBOARD_RANGE)} days`}
           />
+          <ChartCard analytics={analytics}>
+            {(data) => <DocumentTypes analytics={data} />}
+          </ChartCard>
         </Card>
       </div>
 

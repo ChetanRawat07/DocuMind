@@ -1,4 +1,5 @@
 import { type DynamicModule, Module } from '@nestjs/common';
+import { AnalyticsHttpModule } from './analytics/analytics-http.module.js';
 import { AuditHttpModule } from './audit/audit-http.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import type { AppConfig } from './config/app-config.js';
@@ -32,6 +33,7 @@ export class AppModule {
         ReviewHttpModule,
         ProcessingHttpModule,
         AuditHttpModule,
+        AnalyticsHttpModule,
       ],
     };
   }

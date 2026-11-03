@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fakeSession } from './test/fake-auth-client';
 import { stubXhr, waitForRequest } from './test/fake-xhr';
 import { testExtraction } from './test/extraction-fixture';
-import { renderApp, stubApi, testDocument } from './test/render-app';
+import { renderApp, stubApi, testAnalytics, testDocument } from './test/render-app';
 
 /**
  * Automated accessibility checks (axe-core) on each screen. jsdom has no
@@ -226,6 +226,33 @@ describe('accessibility', () => {
     });
     renderApp(`/documents/${document.id}`, fakeSession());
     await screen.findByRole('list', { name: 'Document activity' });
+
+    await expectNoViolations();
+  });
+
+  it('the analytics page with data has no violations', async () => {
+    stubApi((url) =>
+      url.startsWith('/api/v1/analytics')
+        ? Response.json(
+            testAnalytics({
+              documents: { uploaded: 3, processed: 2, succeeded: 2, failed: 0, needsReview: 1 },
+              successRate: 1,
+              failureRate: 0,
+              documentTypes: [{ type: 'invoice', count: 2 }],
+              review: {
+                extracted: 2,
+                autoCompleted: 1,
+                approvedAfterReview: 0,
+                rejected: 0,
+                pending: 1,
+                rate: 0.5,
+              },
+            }),
+          )
+        : undefined,
+    );
+    renderApp('/analytics', fakeSession());
+    await screen.findByRole('region', { name: 'Key metrics' });
 
     await expectNoViolations();
   });

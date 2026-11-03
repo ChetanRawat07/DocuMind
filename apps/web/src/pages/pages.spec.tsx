@@ -2,7 +2,14 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fakeSession } from '../test/fake-auth-client';
-import { apiErrorResponse, renderApp, stubApi, TEST_USER, testDocument } from '../test/render-app';
+import {
+  apiErrorResponse,
+  renderApp,
+  stubApi,
+  TEST_USER,
+  testAnalytics,
+  testDocument,
+} from '../test/render-app';
 import { RECENT_DOCUMENTS_LIMIT } from './dashboard-page';
 
 afterEach(() => {
@@ -15,7 +22,7 @@ function documentsResponse(items: ReturnType<typeof testDocument>[]) {
 }
 
 describe('DashboardPage', () => {
-  it('greets the user and shows "no data yet" for every metric', async () => {
+  it('greets the user and shows real zeros, not invented numbers, before anything is processed', async () => {
     stubApi();
     renderApp('/', fakeSession());
 
@@ -26,12 +33,43 @@ describe('DashboardPage', () => {
       }),
     ).toBeInTheDocument();
     const metrics = screen.getByRole('region', { name: 'Key metrics' });
-    expect(within(metrics).getAllByRole('definition')).toHaveLength(4);
-    for (const value of within(metrics).getAllByRole('definition')) {
-      expect(value).toHaveTextContent('No data yet');
-    }
+    await within(metrics).findByText('Uploaded in the last 30 days');
+    const values = within(metrics)
+      .getAllByRole('definition')
+      .map((value) => value.textContent);
+    // Counts are zero; a rate with nothing to divide by is a dash, not 0%.
+    expect(values).toEqual(['0', '0', '—No data yet', '0']);
     expect(screen.getByText('No processing activity yet')).toBeInTheDocument();
     expect(screen.getByText('No classified documents yet')).toBeInTheDocument();
+  });
+
+  it("shows the last 30 days of analytics in the viewer's timezone", async () => {
+    const fetchMock = stubApi((url) =>
+      url.startsWith('/api/v1/analytics')
+        ? Response.json(
+            testAnalytics({
+              documents: { uploaded: 12, processed: 10, succeeded: 9, failed: 1, needsReview: 3 },
+              successRate: 0.9,
+              documentTypes: [
+                { type: 'invoice', count: 7 },
+                { type: 'unclassified', count: 1 },
+              ],
+              corrections: { reviewedFields: 40, correctedFields: 6, rate: 0.15 },
+            }),
+          )
+        : undefined,
+    );
+    renderApp('/', fakeSession());
+
+    const metrics = await screen.findByRole('region', { name: 'Key metrics' });
+    expect(await within(metrics).findByText('12')).toBeInTheDocument();
+    expect(within(metrics).getByText('90% succeeded')).toBeInTheDocument();
+    expect(within(metrics).getByText('15%')).toBeInTheDocument();
+    expect(within(metrics).getByText('of 40 reviewed values were corrected')).toBeInTheDocument();
+    expect(within(metrics).getByText('3')).toBeInTheDocument();
+    expect(screen.getByText('Unclassified')).toBeInTheDocument();
+    const request = fetchMock.mock.calls.find(([url]) => url.startsWith('/api/v1/analytics'));
+    expect(request?.[0]).toMatch(/^\/api\/v1\/analytics\?days=30&tz=[\w%]+$/);
   });
 
   it('greets without a name when the profile has none', async () => {
@@ -144,16 +182,5 @@ describe('SettingsPage', () => {
 
     expect(fake.mocks.signOut).toHaveBeenCalledWith({ scope: 'local' });
     expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
-  });
-});
-
-describe('ComingSoonPage', () => {
-  it('says plainly that the section is not available yet', async () => {
-    stubApi();
-    renderApp('/analytics', fakeSession());
-
-    expect(await screen.findByRole('heading', { level: 1, name: 'Analytics' })).toBeInTheDocument();
-    expect(screen.getByText('Coming soon')).toBeInTheDocument();
-    expect(screen.getByText(/Analytics is not available yet/)).toBeInTheDocument();
   });
 });
