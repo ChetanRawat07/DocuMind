@@ -156,15 +156,16 @@ failure.
 
 **Queries.**
 
-| Query                                | Shape                                                                                            | Index                                 | Cost                                         |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------ | ------------------------------------- | -------------------------------------------- |
-| Owner's list, newest first           | `WHERE user_id = $1 AND (created_at, id) < ($2, $3) ORDER BY created_at DESC, id DESC LIMIT n+1` | `documents_user_id_created_at_id_idx` | Index range scan, no sort; constant per page |
-| One document                         | `WHERE id = $1 AND user_id = $2`                                                                 | Primary key                           | One row                                      |
-| Owner's list, oldest first           | Same, `>` and `ORDER BY created_at, id`                                                          | `documents_user_id_created_at_id_idx` | Backward index scan, no sort                 |
-| Owner's list by name or size         | `WHERE user_id = $1 AND (sort_col, id) > ($2, $3) ORDER BY sort_col, id LIMIT n+1`               | Any `user_id`-prefixed index          | Sorts the owner's matching rows (no index)   |
-| Filename search                      | `… AND original_filename ILIKE '%term%'` (wildcards escaped)                                     | Any `user_id`-prefixed index          | Scans the owner's rows; trigram index later  |
-| Status filters/counts (Phases 5, 12) | `WHERE user_id = $1 AND status = $2`                                                             | `documents_user_id_status_idx`        | Index scan                                   |
-| Delete                               | `DELETE … WHERE id = $1 AND user_id = $2 RETURNING *`                                            | Primary key                           | One row + cascades                           |
+| Query                                | Shape                                                                                            | Index                                          | Cost                                                              |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------ | ---------------------------------------------- | ----------------------------------------------------------------- |
+| Owner's list, newest first           | `WHERE user_id = $1 AND (created_at, id) < ($2, $3) ORDER BY created_at DESC, id DESC LIMIT n+1` | `documents_user_id_created_at_id_idx`          | Index range scan, no sort; constant per page                      |
+| One document                         | `WHERE id = $1 AND user_id = $2`                                                                 | Primary key                                    | One row                                                           |
+| Owner's list, oldest first           | Same, `>` and `ORDER BY created_at, id`                                                          | `documents_user_id_created_at_id_idx`          | Backward index scan, no sort                                      |
+| Owner's list by name or size         | `WHERE user_id = $1 AND (sort_col, id) > ($2, $3) ORDER BY sort_col, id LIMIT n+1`               | Any `user_id`-prefixed index                   | Sorts the owner's matching rows (no index)                        |
+| Filename search                      | `… AND original_filename ILIKE '%term%'` (wildcards escaped)                                     | Any `user_id`-prefixed index                   | Scans the owner's rows; trigram index later                       |
+| Status filters/counts (Phases 5, 12) | `WHERE user_id = $1 AND status = $2`                                                             | `documents_user_id_status_idx`                 | Index scan                                                        |
+| Analytics window (12)                | `WHERE user_id = $1 AND processed_at >= $2`                                                      | `documents_user_id_processed_at_idx` (partial) | Index range scan; [plans](../operations/analytics.md#query-plans) |
+| Delete                               | `DELETE … WHERE id = $1 AND user_id = $2 RETURNING *`                                            | Primary key                                    | One row + cascades                                                |
 
 **Pagination.** Keyset (cursor) pagination rather than `OFFSET`: `OFFSET n` reads and discards
 `n` rows, so late pages get slower, and rows inserted between requests shift page boundaries

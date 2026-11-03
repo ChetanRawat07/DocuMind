@@ -79,8 +79,10 @@ extraction) and 9 (asynchronous queue and workers) are complete.** The following
   durations. The Processing screen shows the queue, outcomes, durations and failure reasons, the
   Audit Logs screen the user's trail, and each document its activity
   ([details](docs/operations/observability.md)).
-
-Not built yet: analytics.
+- Analytics over 7, 30 or 90 days in the viewer's timezone: processed documents, success and
+  failure rates, processing time, document types, confidence distribution, review rate, the share
+  of reviewed values people corrected, and daily volume. The dashboard shows the last 30 days.
+  Queries are bounded by the window and indexed ([details](docs/operations/analytics.md)).
 
 ## Architecture
 
@@ -274,6 +276,7 @@ with a message naming the variable.
 | GET    | `/api/v1/processing/summary`                     | Bearer | Your queue now, and the last 7 days' outcomes, failure codes and step durations                                                                                  |
 | GET    | `/api/v1/processing/jobs`                        | Bearer | Your 50 most recent jobs across documents; `?status=` filter                                                                                                     |
 | GET    | `/api/v1/audit-logs`                             | Bearer | Your actions and the system's actions on your documents, newest first; `?cursor=` paging                                                                         |
+| GET    | `/api/v1/analytics`                              | Bearer | Your analytics: `days` = 7, 30 or 90; `tz` = your IANA timezone                                                                                                  |
 
 All errors use `{ "error": { "code": "<HTTP_STATUS_NAME>", "message": "…" } }`. Server errors
 never include internal details. Authenticated endpoints return 401 (with `WWW-Authenticate`) for a

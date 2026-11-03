@@ -3,7 +3,7 @@
 This document describes the architecture **as implemented** and marks planned parts explicitly.
 Decisions and their reasoning live in [the ADRs](../adr/README.md).
 
-## Current state: Phase 11 (audit logging and observability)
+## Current state: Phase 12 (analytics)
 
 Implemented: repository structure, the API process with liveness and readiness endpoints, the
 worker process skeleton, shared contracts, configuration validation, the PostgreSQL schema with
@@ -22,7 +22,8 @@ runs text extraction and AI extraction, and retries, dead-letters or recovers it
 and the review workflow: confident extractions complete on their own, the rest are reviewed field
 by field, then approved or rejected, and observability: request ids that follow a request into its
 job, the worker and the AI calls; structured JSON logs; step timings on each job; the Processing
-and Audit Logs screens and a per-document activity timeline. Not yet implemented: analytics.
+and Audit Logs screens and a per-document activity timeline, and analytics: processing, review
+and correction rates over 7, 30 or 90 days in the viewer's timezone, from bounded, indexed queries.
 
 - Schema, constraints and indexes: [database/schema.md](../database/schema.md)
 - Text extraction and OCR: [processing/text-extraction.md](../processing/text-extraction.md)
@@ -31,6 +32,7 @@ and Audit Logs screens and a per-document activity timeline. Not yet implemented
 - Job queue, retries and the worker: [processing/job-queue.md](../processing/job-queue.md)
 - Review workflow: [processing/review-workflow.md](../processing/review-workflow.md)
 - Logs, request ids, metrics and health: [operations/observability.md](../operations/observability.md)
+- Analytics definitions and query plans: [operations/analytics.md](../operations/analytics.md)
 - Authentication and authorization: [security/authentication.md](../security/authentication.md)
 - Document management: [documents/document-management.md](../documents/document-management.md)
 - Web UI (tokens, components, layout, accessibility): [frontend/ui-foundation.md](../frontend/ui-foundation.md)
