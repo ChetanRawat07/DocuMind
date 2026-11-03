@@ -6,6 +6,7 @@ import { formatDuration, formatPercent } from './format';
 /** Audit actions as people read them. An action missing here shows its code. */
 const ACTION_LABEL: Readonly<Record<string, string>> = {
   'user.registered': 'Account created',
+  'user.data_erased': 'All data deleted',
   'document.uploaded': 'Uploaded',
   'document.deleted': 'Deleted',
   'document.viewed': 'Previewed',

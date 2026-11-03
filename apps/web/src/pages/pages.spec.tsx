@@ -183,4 +183,44 @@ describe('SettingsPage', () => {
     expect(fake.mocks.signOut).toHaveBeenCalledWith({ scope: 'local' });
     expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
   });
+
+  it('deletes all data only after the confirmation is typed, then signs out', async () => {
+    const fetchMock = stubApi((url, init) =>
+      url === '/api/v1/me' && init?.method === 'DELETE'
+        ? new Response(null, { status: 204 })
+        : undefined,
+    );
+    const fake = renderApp('/settings', fakeSession());
+    const user = userEvent.setup();
+
+    const erase = await screen.findByRole('button', { name: 'Delete all my data' });
+    expect(erase).toBeDisabled();
+    await user.type(screen.getByLabelText('Type DELETE to confirm'), 'delete');
+    expect(erase).toBeDisabled();
+    await user.clear(screen.getByLabelText('Type DELETE to confirm'));
+    await user.type(screen.getByLabelText('Type DELETE to confirm'), 'DELETE');
+    await user.click(erase);
+
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+    expect(fake.mocks.signOut).toHaveBeenCalledWith({ scope: 'local' });
+    expect(
+      fetchMock.mock.calls.filter(
+        ([url, init]) => url === '/api/v1/me' && init?.method === 'DELETE',
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('stays signed in and says so when deleting the data fails', async () => {
+    stubApi((url, init) =>
+      url === '/api/v1/me' && init?.method === 'DELETE' ? apiErrorResponse(503) : undefined,
+    );
+    const fake = renderApp('/settings', fakeSession());
+    const user = userEvent.setup();
+
+    await user.type(await screen.findByLabelText('Type DELETE to confirm'), 'DELETE');
+    await user.click(screen.getByRole('button', { name: 'Delete all my data' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not delete your data');
+    expect(fake.mocks.signOut).not.toHaveBeenCalled();
+  });
 });

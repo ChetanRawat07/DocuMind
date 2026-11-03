@@ -2,6 +2,7 @@ import { LogOut } from 'lucide-react';
 import { displayNameOf, useCurrentUser } from '../auth/current-user';
 import { useAuth } from '../auth/use-auth';
 import { ApiStatusIndicator } from '../components/api-status';
+import { EraseDataCard } from '../components/settings/erase-data-card';
 import { Button } from '../components/ui/button';
 import { Card, CardHeader } from '../components/ui/card';
 import { PageHeader } from '../components/ui/page-header';
@@ -59,6 +60,8 @@ export function SettingsPage() {
             <ApiStatusIndicator />
           </div>
         </Card>
+
+        <EraseDataCard />
       </div>
     </>
   );
