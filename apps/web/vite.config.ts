@@ -44,6 +44,14 @@ export default defineConfig(({ mode }) => {
     test: {
       environment: 'jsdom',
       setupFiles: ['./src/test/setup.ts'],
+      // `npm run test:coverage`. Thresholds sit just under the measured numbers, so a drop fails.
+      coverage: {
+        provider: 'v8',
+        include: ['src/**/*.{ts,tsx}'],
+        exclude: ['src/**/*.spec.{ts,tsx}', 'src/test/**'],
+        reporter: ['text-summary', 'html'],
+        thresholds: { lines: 93, statements: 92, branches: 84, functions: 94 },
+      },
     },
   };
 });

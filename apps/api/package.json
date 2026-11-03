@@ -12,6 +12,7 @@
     "start:worker": "node dist/worker.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "ai:check": "npm run build && node --env-file-if-exists=../../.env dist/cli/ai-check.js",
     "extract": "npm run build && node --env-file-if-exists=../../.env dist/cli/extract-text.js",
     "analyze": "npm run build && node --env-file-if-exists=../../.env dist/cli/analyze-document.js",

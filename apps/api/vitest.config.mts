@@ -9,6 +9,14 @@ process.env.TEST_DATABASE_URL ??= rootEnv.TEST_DATABASE_URL;
 export default defineConfig({
   test: {
     environment: 'node',
+    // `npm run test:coverage`. Thresholds sit just under the measured numbers, so a drop fails.
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.ts'],
+      exclude: ['src/**/*.spec.ts', 'src/database/generated/**'],
+      reporter: ['text-summary', 'html'],
+      thresholds: { lines: 88, statements: 88, branches: 83, functions: 91 },
+    },
     projects: [
       {
         extends: true,
