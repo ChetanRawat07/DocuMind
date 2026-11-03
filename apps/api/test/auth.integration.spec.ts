@@ -8,6 +8,7 @@ import {
 } from '@documind/shared';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import type { JWTVerifyGetKey } from 'jose';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module.js';
@@ -27,6 +28,8 @@ describe('authentication and authorization (HTTP)', () => {
   let app: INestApplication<Server>;
   let db: DatabaseExecutor;
   let issuer: TestTokenIssuer;
+  // Set to simulate Supabase's key endpoint being unreachable.
+  let keyFetchFailure: Error | undefined;
 
   const http = () => request(app.getHttpServer());
   const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
@@ -51,7 +54,10 @@ describe('authentication and authorization (HTTP)', () => {
       imports: [AppModule.register(config)],
     })
       .overrideProvider(JWT_KEY_RESOLVER)
-      .useValue(issuer.keyResolver)
+      .useValue(((header, token) =>
+        keyFetchFailure
+          ? Promise.reject(keyFetchFailure)
+          : issuer.keyResolver(header, token)) satisfies JWTVerifyGetKey)
       .compile();
     app = moduleRef.createNestApplication<INestApplication<Server>>({ logger: false });
     configureHttpApp(app, config);
@@ -64,6 +70,7 @@ describe('authentication and authorization (HTTP)', () => {
   });
 
   beforeEach(async () => {
+    keyFetchFailure = undefined;
     await truncateAllTables(db);
   });
 
@@ -115,6 +122,24 @@ describe('authentication and authorization (HTTP)', () => {
       expect(apiErrorResponseSchema.parse(response.body).error.message).toBe(
         'Access token expired',
       );
+    });
+
+    it('answers 503, not 401, while the signing keys cannot be fetched', async () => {
+      const token = await issuer.sign(randomUUID());
+      keyFetchFailure = new Error('connect ECONNREFUSED 10.0.0.7:443');
+
+      const response = await http().get('/api/v1/me').set(bearer(token)).expect(503);
+
+      // A 401 would make the client sign the user out over an outage. Like every 5xx, the body is generic.
+      expect(apiErrorResponseSchema.parse(response.body).error.message).toBe(
+        'An unexpected error occurred.',
+      );
+      expect(JSON.stringify(response.body)).not.toContain('ECONNREFUSED');
+      expect(response.headers['www-authenticate']).toBeUndefined();
+      expect(await countRows('users')).toBe(0);
+
+      keyFetchFailure = undefined;
+      await http().get('/api/v1/me').set(bearer(token)).expect(200);
     });
 
     it('accepts the bearer scheme case-insensitively', async () => {

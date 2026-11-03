@@ -2,6 +2,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { samplePdf, textImage } from '../../test/support/sample-documents.js';
 import { imageDimensions } from './image-dimensions.js';
 import { OcrEngine } from './ocr-engine.js';
+import { MAX_OCR_PIXELS } from './pdf-document.js';
 import { TextExtractionError } from './text-extraction-error.js';
 import { extractText, MAX_PDF_PAGES } from './text-extractor.js';
 
@@ -122,6 +123,24 @@ describe('extractText', () => {
       await expectFailure(extractText(png, 'image/png', ocr), 'image_too_large');
     });
 
+    it('draws the pixel limit exactly at MAX_OCR_PIXELS', async () => {
+      const png = (width: number, height: number) => {
+        const image = textImage(['tiny']);
+        image.writeUInt32BE(width, 16);
+        image.writeUInt32BE(height, 20);
+        return image;
+      };
+
+      await expectFailure(
+        extractText(png(1, MAX_OCR_PIXELS + 1), 'image/png', ocr),
+        'image_too_large',
+      );
+      // At the limit the image reaches OCR, stubbed here so the fake pixels are never decoded.
+      const reachedOcr = new Error('reached OCR');
+      const stub = { recognize: () => Promise.reject(reachedOcr) } as unknown as OcrEngine;
+      await expect(extractText(png(1, MAX_OCR_PIXELS), 'image/png', stub)).rejects.toBe(reachedOcr);
+    });
+
     it('refuses an image with a corrupt header', async () => {
       const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0x00, 0x01, 0x02]);
 
@@ -155,5 +174,30 @@ describe('imageDimensions', () => {
     expect(imageDimensions(Buffer.from([0x89, 0x50]), 'image/png')).toBeNull();
     expect(imageDimensions(Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00]), 'image/jpeg')).toBeNull();
     expect(imageDimensions(Buffer.from('GIF89a'), 'image/gif')).toBeNull();
+  });
+
+  // Hand-built JPEG headers: SOF2 with height 123 and width 321.
+  const SOF2 = [0xff, 0xc2, 0x00, 0x11, 0x08, 0x00, 0x7b, 0x01, 0x41];
+  const jpeg = (...bytes: number[]) => Buffer.from([0xff, 0xd8, ...bytes]);
+
+  it('walks fill bytes, standalone markers and skipped segments to the frame header', () => {
+    const app0 = [0xff, 0xe0, 0x00, 0x04, 0x4a, 0x46];
+    // DHT (C4) sits in the SOF range but is a table, not a frame.
+    const dht = [0xff, 0xc4, 0x00, 0x04, 0x00, 0x00];
+    const restart = [0xff, 0xd0];
+    expect(imageDimensions(jpeg(0xff, ...app0, ...dht, ...restart, ...SOF2), 'image/jpeg')).toEqual(
+      { width: 321, height: 123 },
+    );
+  });
+
+  it.each([
+    ['a byte that is not a marker', jpeg(0x00, 0xff, ...SOF2)],
+    ['a truncated frame header', jpeg(...SOF2.slice(0, 6))],
+    ['a segment length past the end', jpeg(0xff, 0xe0, 0xff, 0xff)],
+    ['a zero width', jpeg(...SOF2.slice(0, 7), 0x00, 0x00)],
+    ['a PNG without IHDR first', Buffer.alloc(24)],
+  ])('returns null for %s', (_case, image) => {
+    const type = image[0] === 0xff ? 'image/jpeg' : 'image/png';
+    expect(imageDimensions(image, type)).toBeNull();
   });
 });

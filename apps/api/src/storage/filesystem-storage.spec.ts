@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { text } from 'node:stream/consumers';
@@ -59,6 +59,35 @@ describe('FilesystemStorage', () => {
     await storage.delete(KEY);
 
     await expect(stat(join(root, KEY))).rejects.toThrow(/ENOENT/);
+  });
+
+  it('removes its temporary file when a write fails, keeping what was there', async () => {
+    // A directory at the key makes the final rename fail.
+    await mkdir(join(root, KEY), { recursive: true });
+
+    await expect(storage.put(KEY, Buffer.from('x'))).rejects.toThrow();
+
+    expect(await readdir(join(root, KEY, '..'))).toEqual(['original.pdf']);
+    expect((await stat(join(root, KEY))).isDirectory()).toBe(true);
+  });
+
+  it('lists stored objects only, skipping temporary and foreign files', async () => {
+    await storage.put(KEY, Buffer.from('x'));
+    await writeFile(join(root, `${KEY}.0a1b.tmp`), 'partial');
+    await writeFile(join(root, 'notes.txt'), 'not a key');
+
+    const keys = [];
+    for await (const object of storage.list()) keys.push(object.key);
+
+    expect(keys).toEqual([KEY]);
+  });
+
+  it('lists nothing when the root does not exist yet', async () => {
+    const keys = [];
+    for await (const object of new FilesystemStorage(join(root, 'missing')).list()) {
+      keys.push(object.key);
+    }
+    expect(keys).toEqual([]);
   });
 
   it.each(['../outside.pdf', `${KEY}/../../../../../../escape.pdf`, '/etc/passwd'])(

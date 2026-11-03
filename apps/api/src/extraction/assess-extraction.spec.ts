@@ -180,6 +180,20 @@ describe('assessExtraction', () => {
     expect(result.overallConfidence).toBeLessThanOrEqual(0.5);
   });
 
+  it('accepts a due date on the issue date', () => {
+    const fields = invoice({ dueDate: ['2026-03-05', 'Invoice date: 5 March 2026'] });
+
+    expect(codes(assess({ fields, lineItems: LINES }))).not.toContain('date_order');
+  });
+
+  it('tolerates rounding by a few cents but flags a real difference in the totals', () => {
+    const rounded = invoice({ totalAmount: [1428.04, 'Total: 1,428.00 EUR'] });
+    const wrong = invoice({ totalAmount: [1428.1, 'Total: 1,428.00 EUR'] });
+
+    expect(codes(assess({ fields: rounded, lineItems: LINES }))).not.toContain('totals_mismatch');
+    expect(codes(assess({ fields: wrong, lineItems: LINES }))).toContain('totals_mismatch');
+  });
+
   it('checks line items against the total minus tax when there is no subtotal', () => {
     const fields = invoice({ subtotal: [null, null] });
 

@@ -119,6 +119,38 @@ describe('ProcessingJobsRepository', () => {
       expect(leaseMs).toBe(LEASE_MS);
     });
 
+    it('skips a job another worker is still claiming instead of waiting for it', async () => {
+      const owner = await insertUser(db);
+      const later = (await insertDocument(db, owner.id)).id;
+      const { job: oldest } = await jobs.enqueue(documentId);
+      const { job: next } = await jobs.enqueue(later);
+
+      let release!: () => void;
+      const released = new Promise<void>((resolve) => (release = resolve));
+      let firstHoldsLock!: () => void;
+      const locked = new Promise<void>((resolve) => (firstHoldsLock = resolve));
+      // Worker A's claim stays uncommitted, so its row lock is held.
+      const first = db.transaction().execute(async (trx) => {
+        const claimed = await jobs.claimNext('worker-a', LEASE_MS, trx);
+        firstHoldsLock();
+        await released;
+        return claimed;
+      });
+      await locked;
+
+      try {
+        // Without SKIP LOCKED, worker B would wait for A and hit the lock timeout.
+        const second = await db.transaction().execute(async (trx) => {
+          await sql`SET LOCAL lock_timeout = '1s'`.execute(trx);
+          return jobs.claimNext('worker-b', LEASE_MS, trx);
+        });
+        expect(second?.id).toBe(next.id);
+      } finally {
+        release();
+      }
+      expect((await first)?.id).toBe(oldest.id);
+    });
+
     it('leaves jobs that are not due yet', async () => {
       const { job } = await jobs.enqueue(documentId);
       await db

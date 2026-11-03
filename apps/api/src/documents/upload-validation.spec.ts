@@ -33,6 +33,9 @@ describe('detectFileType', () => {
     ['HTML', HTML, null],
     ['a PDF signature after leading junk', Buffer.concat([Buffer.from('junk'), PDF]), null],
     ['a truncated PNG signature', PNG.subarray(0, 4), null],
+    // Starts like a PDF: the whole signature must match, not a prefix.
+    ['a text file starting with %P', Buffer.from('%Profit report 2026'), null],
+    ['%PDF without its dash', Buffer.from('%PDF1.7 not a pdf'), null],
     ['nothing', Buffer.alloc(0), null],
   ])('detects %s as %s', (_name, content, expected) => {
     expect(detectFileType(content)).toBe(expected);

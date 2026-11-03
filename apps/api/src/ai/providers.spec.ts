@@ -202,6 +202,25 @@ describe.each([
     expect(await caught(create().generate(REQUEST))).toMatchObject({ retryAfterMs: 30_000 });
   });
 
+  it('reads a Retry-After given as an HTTP date, never as a negative wait', async () => {
+    const retryAfter = async (value: string) => {
+      stubFetch(() => new Response(null, { status: 429, headers: { 'Retry-After': value } }));
+      return (await caught(create().generate(REQUEST))).retryAfterMs;
+    };
+
+    // HTTP dates have whole seconds, so up to a second is lost.
+    const inAMinute = await retryAfter(new Date(Date.now() + 60_000).toUTCString());
+    expect(inAMinute).toBeGreaterThanOrEqual(58_000);
+    expect(inAMinute).toBeLessThanOrEqual(60_000);
+    expect(await retryAfter('Thu, 01 Jan 2026 00:00:00 GMT')).toBe(0);
+  });
+
+  it('ignores a Retry-After it cannot read', async () => {
+    stubFetch(() => new Response(null, { status: 429, headers: { 'Retry-After': 'soon' } }));
+
+    expect((await caught(create().generate(REQUEST))).retryAfterMs).toBeUndefined();
+  });
+
   it('reports a network failure as unavailable', async () => {
     vi.stubGlobal(
       'fetch',
