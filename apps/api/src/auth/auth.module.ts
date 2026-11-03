@@ -7,6 +7,7 @@ import { APP_CONFIG } from '../config/app-config.module.js';
 import { UsersModule } from '../users/users.module.js';
 import { AccessTokenVerifier, JWT_KEY_RESOLVER } from './access-token-verifier.js';
 import { AuthGuard } from './auth.guard.js';
+import { RateLimitGuard } from './rate-limit.guard.js';
 import { UserProvisioningService } from './user-provisioning.service.js';
 
 /**
@@ -31,6 +32,8 @@ import { UserProvisioningService } from './user-provisioning.service.js';
     AccessTokenVerifier,
     UserProvisioningService,
     { provide: APP_GUARD, useClass: AuthGuard },
+    // After AuthGuard: global guards run in registration order, and limits are per user.
+    { provide: APP_GUARD, useClass: RateLimitGuard },
   ],
 })
 export class AuthModule {}

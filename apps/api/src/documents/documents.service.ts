@@ -16,6 +16,7 @@ import {
 } from '../storage/object-storage.js';
 import { documentStorageKey } from '../storage/storage-key.js';
 import { type Document, DocumentsRepository } from './documents.repository.js';
+import { ProcessingQuota } from './processing-quota.js';
 import { validateUpload } from './upload-validation.js';
 
 /** Jobs shown in a document's history; older ones stay in the table. */
@@ -47,9 +48,13 @@ export class DocumentsService {
     private readonly auditLogs: AuditLogsRepository,
     private readonly storage: ObjectStorage,
     private readonly jobs: ProcessingJobsRepository,
+    private readonly quota: ProcessingQuota,
   ) {}
 
-  /** Validates and stores a file for `ownerId`. Throws UploadRejectedError for an unacceptable file. */
+  /**
+   * Validates and stores a file for `ownerId`. Throws UploadRejectedError for an
+   * unacceptable file, ProcessingQuotaExceededError when the quota is used up.
+   */
   async upload(
     ownerId: string,
     file: { readonly originalName: string; readonly content: Buffer },
@@ -66,6 +71,7 @@ export class DocumentsService {
     await this.storage.put(storageKey, file.content, mimeType);
     try {
       return await this.db.transaction().execute(async (trx) => {
+        await this.quota.assertAvailable(ownerId, trx);
         await this.documents.create(
           {
             id: documentId,
@@ -157,6 +163,8 @@ export class DocumentsService {
     return this.db.transaction().execute(async (trx) => {
       // The conditional update locks the row, so concurrent requests queue it once.
       if (await this.documents.requeueForOwner(ownerId, documentId, trx)) {
+        // After the requeue, so repeating a request for a queued document never hits the quota.
+        await this.quota.assertAvailable(ownerId, trx);
         const result = await this.jobs.enqueue(documentId, trx);
         await this.auditLogs.append(
           {

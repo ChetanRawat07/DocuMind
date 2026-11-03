@@ -18,6 +18,7 @@ import {
   Delete,
   Get,
   HttpCode,
+  HttpException,
   HttpStatus,
   Logger,
   NotFoundException,
@@ -35,6 +36,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
 import { CurrentUser } from '../auth/current-user.decorator.js';
+import { RateLimit } from '../auth/rate-limit.guard.js';
 import { REQUEST_ID_HEADER } from '../http/request-correlation.js';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe.js';
 import type { ProcessingJob } from '../jobs/processing-jobs.repository.js';
@@ -43,6 +45,7 @@ import { contentDisposition } from './content-disposition.js';
 import { decodeDocumentCursor, encodeDocumentCursor } from './document-cursor.js';
 import { type Document, DocumentsRepository } from './documents.repository.js';
 import { DocumentsService } from './documents.service.js';
+import { ProcessingQuotaExceededError } from './processing-quota.js';
 import { type UploadRejection, UploadRejectedError } from './upload-validation.js';
 
 /**
@@ -89,6 +92,7 @@ export class DocumentsController {
    * body is read.
    */
   @Post()
+  @RateLimit('processing')
   @UseInterceptors(UPLOAD_INTERCEPTOR)
   async upload(
     @CurrentUser() user: User,
@@ -107,7 +111,7 @@ export class DocumentsController {
       if (error instanceof UploadRejectedError) {
         throw REJECTION_STATUS[error.reason](error.message);
       }
-      throw error;
+      throw quotaError(error);
     }
   }
 
@@ -236,12 +240,17 @@ export class DocumentsController {
    * current job, so repeating the request is safe.
    */
   @Post(':id/jobs')
+  @RateLimit('processing')
   @HttpCode(HttpStatus.ACCEPTED)
   async process(
     @CurrentUser() user: User,
     @Param('id', new ParseUUIDPipe()) id: string,
   ): Promise<ProcessingJobDto> {
-    const result = await this.documentsService.requestProcessing(user.id, id);
+    const result = await this.documentsService
+      .requestProcessing(user.id, id)
+      .catch((error: unknown) => {
+        throw quotaError(error);
+      });
     if (!result) {
       throw new NotFoundException('Document not found');
     }
@@ -262,6 +271,13 @@ export class DocumentsController {
       throw new NotFoundException('Document not found');
     }
   }
+}
+
+/** The quota as a 429 the client may show; any other error unchanged. */
+function quotaError(error: unknown): unknown {
+  return error instanceof ProcessingQuotaExceededError
+    ? new HttpException(error.message, HttpStatus.TOO_MANY_REQUESTS)
+    : error;
 }
 
 export function toDocumentDto(document: Document): DocumentDto {
