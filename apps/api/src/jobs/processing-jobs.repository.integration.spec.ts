@@ -42,6 +42,18 @@ describe('ProcessingJobsRepository', () => {
     });
   });
 
+  it("records the document's owner on the job", async () => {
+    const { job } = await jobs.enqueue(documentId);
+
+    const row = await db
+      .selectFrom('processing_jobs')
+      .innerJoin('documents', 'documents.id', 'processing_jobs.document_id')
+      .select(['processing_jobs.user_id as jobOwner', 'documents.user_id as documentOwner'])
+      .where('processing_jobs.id', '=', job.id)
+      .executeTakeFirstOrThrow();
+    expect(row.jobOwner).toBe(row.documentOwner);
+  });
+
   it('returns the existing active job for a duplicate request', async () => {
     const first = await jobs.enqueue(documentId);
 

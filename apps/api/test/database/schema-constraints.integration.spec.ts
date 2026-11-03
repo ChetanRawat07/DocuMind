@@ -178,13 +178,26 @@ describe('schema constraints', () => {
       await expect(insertJob(db, documentId)).resolves.toBeDefined();
     });
 
+    it("keeps a job's owner equal to its document's owner", async () => {
+      const { id: documentId } = await insertDocument(db, ownerId);
+      const { id: otherUserId } = await insertUser(db);
+
+      await expectPgError(
+        db
+          .insertInto('processing_jobs')
+          .values({ document_id: documentId, user_id: otherUserId })
+          .execute(),
+        { code: PG.foreignKeyViolation, constraint: 'processing_jobs_document_owner_fkey' },
+      );
+    });
+
     it('rejects more attempts than allowed', async () => {
       const { id: documentId } = await insertDocument(db, ownerId);
 
       await expectPgError(
         db
           .insertInto('processing_jobs')
-          .values({ document_id: documentId, attempts: 4, max_attempts: 3 })
+          .values({ document_id: documentId, user_id: ownerId, attempts: 4, max_attempts: 3 })
           .execute(),
         { code: PG.checkViolation, constraint: 'processing_jobs_attempts_within_max' },
       );
@@ -216,7 +229,7 @@ describe('schema constraints', () => {
       await expectPgError(
         db
           .insertInto('processing_jobs')
-          .values({ document_id: documentId, ...values })
+          .values({ document_id: documentId, user_id: ownerId, ...values })
           .execute(),
         { code: PG.checkViolation, constraint: 'processing_jobs_lease_matches_status' },
       );
@@ -228,7 +241,7 @@ describe('schema constraints', () => {
       await expectPgError(
         db
           .insertInto('processing_jobs')
-          .values({ document_id: documentId, status: 'failed' })
+          .values({ document_id: documentId, user_id: ownerId, status: 'failed' })
           .execute(),
         { code: PG.checkViolation, constraint: 'processing_jobs_finished_at_matches_status' },
       );

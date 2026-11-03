@@ -55,6 +55,11 @@ export async function insertDocument(
   return { id };
 }
 
+/** The document's owner as a subquery, for inserting a job's `user_id`. */
+export function ownerOf(db: DatabaseExecutor, documentId: string) {
+  return db.selectFrom('documents').select('user_id').where('id', '=', documentId);
+}
+
 export async function insertJob(
   db: DatabaseExecutor,
   documentId: string,
@@ -64,6 +69,7 @@ export async function insertJob(
     .insertInto('processing_jobs')
     .values({
       document_id: documentId,
+      user_id: ownerOf(db, documentId),
       status,
       ...(status === 'succeeded' ? { finished_at: new Date(), attempts: 1 } : {}),
     })

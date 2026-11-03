@@ -117,6 +117,7 @@ export interface ProcessingJobs {
   status: Generated<string>;
   text_extraction_ms: number | null;
   updated_at: Generated<Timestamp>;
+  user_id: string;
 }
 
 export interface Users {

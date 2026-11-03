@@ -108,7 +108,10 @@ describe('CHECK constraints match the shared constants', () => {
 
   it.each(PROCESSING_STAGES)('accepts processing stage %s', async (stage) => {
     const { id } = await insertDocument(db, ownerId);
-    await db.insertInto('processing_jobs').values({ document_id: id, stage }).execute();
+    await db
+      .insertInto('processing_jobs')
+      .values({ document_id: id, user_id: ownerId, stage })
+      .execute();
   });
 
   it.each(PROCESSING_JOB_STATUSES)('accepts job status %s', async (status) => {
@@ -118,6 +121,7 @@ describe('CHECK constraints match the shared constants', () => {
       .insertInto('processing_jobs')
       .values({
         document_id: id,
+        user_id: ownerId,
         status,
         ...(status === 'running'
           ? { locked_by: 'worker-1', locked_at: now, lease_expires_at: new Date(now.getTime() + 1) }
@@ -147,8 +151,8 @@ describe('CHECK constraints match the shared constants', () => {
               .insertInto('processing_jobs')
               .values(
                 column === 'processing_jobs.status'
-                  ? { document_id: id, status: 'paused' }
-                  : { document_id: id, stage: 'translation' },
+                  ? { document_id: id, user_id: ownerId, status: 'paused' }
+                  : { document_id: id, user_id: ownerId, stage: 'translation' },
               )
               .execute();
 

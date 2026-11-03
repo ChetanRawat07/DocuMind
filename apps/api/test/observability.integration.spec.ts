@@ -21,7 +21,7 @@ import { JWT_KEY_RESOLVER } from '../src/auth/access-token-verifier.js';
 import { loadConfig } from '../src/config/app-config.js';
 import type { DatabaseExecutor } from '../src/database/database.types.js';
 import { configureHttpApp } from '../src/http/configure-http-app.js';
-import { insertDocument, insertUser } from './support/factories.js';
+import { insertDocument, insertUser, ownerOf } from './support/factories.js';
 import { TEST_SUPABASE_URL, TestTokenIssuer } from './support/test-auth.js';
 import {
   createTestDatabase,
@@ -63,6 +63,7 @@ describe('observability (HTTP)', () => {
       .insertInto('processing_jobs')
       .values({
         document_id: documentId,
+        user_id: ownerOf(db, documentId),
         status: job.status,
         attempts: 1,
         started_at: sql<Date>`${finishedAt} - make_interval(secs => ${job.processingSeconds})`,
@@ -159,7 +160,10 @@ describe('observability (HTTP)', () => {
   describe('GET /processing/summary', () => {
     it("counts the user's queue and recent outcomes, with durations", async () => {
       const { id: queued } = await insertDocument(db, aliceId, { status: 'queued' });
-      await db.insertInto('processing_jobs').values({ document_id: queued }).execute();
+      await db
+        .insertInto('processing_jobs')
+        .values({ document_id: queued, user_id: aliceId })
+        .execute();
       const { id: done } = await insertDocument(db, aliceId, { status: 'needs_review' });
       await insertFinishedJob(done, {
         status: 'succeeded',
@@ -197,7 +201,10 @@ describe('observability (HTTP)', () => {
       });
       // Bob's jobs never count for Alice.
       const { id: bobs } = await insertDocument(db, bobId, { status: 'queued' });
-      await db.insertInto('processing_jobs').values({ document_id: bobs }).execute();
+      await db
+        .insertInto('processing_jobs')
+        .values({ document_id: bobs, user_id: bobId })
+        .execute();
 
       const response = await http()
         .get('/api/v1/processing/summary')
@@ -250,9 +257,15 @@ describe('observability (HTTP)', () => {
         status: 'queued',
         originalFilename: 'second.pdf',
       });
-      await db.insertInto('processing_jobs').values({ document_id: second }).execute();
+      await db
+        .insertInto('processing_jobs')
+        .values({ document_id: second, user_id: aliceId })
+        .execute();
       const { id: bobs } = await insertDocument(db, bobId, { status: 'queued' });
-      await db.insertInto('processing_jobs').values({ document_id: bobs }).execute();
+      await db
+        .insertInto('processing_jobs')
+        .values({ document_id: bobs, user_id: bobId })
+        .execute();
 
       const all = ownedProcessingJobListResponseSchema.parse(
         (await http().get('/api/v1/processing/jobs').set(bearer(alice)).expect(200)).body,

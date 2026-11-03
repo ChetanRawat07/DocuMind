@@ -86,15 +86,22 @@ runEntrypoint('seed', async () => {
           {
             id: INVOICE_JOB_ID,
             document_id: INVOICE_ID,
+            user_id: DEMO_USER_ID,
             status: 'succeeded',
             attempts: 1,
             started_at: new Date('2026-10-20T10:00:05.000Z'),
             finished_at: processedAt,
           },
-          { id: CONTRACT_JOB_ID, document_id: CONTRACT_ID, status: 'queued' },
+          {
+            id: CONTRACT_JOB_ID,
+            document_id: CONTRACT_ID,
+            user_id: DEMO_USER_ID,
+            status: 'queued',
+          },
           {
             id: PURCHASE_ORDER_JOB_ID,
             document_id: PURCHASE_ORDER_ID,
+            user_id: DEMO_USER_ID,
             status: 'failed',
             stage: 'ocr',
             attempts: 3,

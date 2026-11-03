@@ -109,7 +109,12 @@ export class ProcessingJobsRepository {
       const inserted = await executor
         .insertInto('processing_jobs')
         // The request that queued the job follows it into the worker's logs and audit entries.
-        .values({ document_id: documentId, request_id: currentCorrelation().requestId ?? null })
+        .values((eb) => ({
+          document_id: documentId,
+          // A copy of the owner for the per-user indexes; the composite foreign key checks it.
+          user_id: eb.selectFrom('documents').select('user_id').where('id', '=', documentId),
+          request_id: currentCorrelation().requestId ?? null,
+        }))
         .onConflict((conflict) =>
           conflict
             .column('document_id')
@@ -174,7 +179,7 @@ export class ProcessingJobsRepository {
       .innerJoin('documents', 'documents.id', 'processing_jobs.document_id')
       .selectAll('processing_jobs')
       .select('documents.original_filename')
-      .where('documents.user_id', '=', ownerId)
+      .where('processing_jobs.user_id', '=', ownerId)
       .$if(options.status !== undefined, (query) =>
         query.where('processing_jobs.status', '=', options.status as ProcessingJobStatus),
       )
@@ -220,14 +225,13 @@ export class ProcessingJobsRepository {
         ${stats(sql`j.text_extraction_ms`, recent, 'text_extraction')},
         ${stats(sql`j.ai_ms`, recent, 'ai')}
       FROM processing_jobs j
-      JOIN documents d ON d.id = j.document_id
-      WHERE d.user_id = ${ownerId}
+      -- Active jobs have no finished_at; with the window, this bounds the read on its index.
+      WHERE j.user_id = ${ownerId} AND (j.finished_at IS NULL OR ${recent})
     `.execute(executor);
     const failures = await sql<{ code: string; count: string }>`
       SELECT j.last_error_code AS code, count(*) AS count
       FROM processing_jobs j
-      JOIN documents d ON d.id = j.document_id
-      WHERE d.user_id = ${ownerId} AND j.status = 'failed' AND ${recent}
+      WHERE j.user_id = ${ownerId} AND j.status = 'failed' AND ${recent}
         AND j.last_error_code IS NOT NULL
       GROUP BY j.last_error_code
       ORDER BY count(*) DESC, j.last_error_code

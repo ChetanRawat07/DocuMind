@@ -6,6 +6,7 @@ import * as extractionDetails from './20261102120000_extraction_details.js';
 import * as extractionReviews from './20261102150000_extraction_reviews.js';
 import * as documentsProcessedAtIndex from './20261103140000_documents_processed_at_index.js';
 import * as processingQuotaIndex from './20261104120000_processing_quota_index.js';
+import * as performance from './20261105120000_performance.js';
 import * as observability from './20261103120000_observability.js';
 
 /**
@@ -23,4 +24,5 @@ export const migrations: Record<string, Migration> = {
   '20261103120000_observability': observability,
   '20261103140000_documents_processed_at_index': documentsProcessedAtIndex,
   '20261104120000_processing_quota_index': processingQuotaIndex,
+  '20261105120000_performance': performance,
 };
