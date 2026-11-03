@@ -1,3 +1,4 @@
+export * from './analytics.js';
 export * from './api-error.js';
 export * from './audit.js';
 export * from './documents.js';
