@@ -3,7 +3,7 @@
 This document describes the architecture **as implemented** and marks planned parts explicitly.
 Decisions and their reasoning live in [the ADRs](../adr/README.md).
 
-## Current state: Phase 12 (analytics)
+## Current state: Phase 13 (security hardening)
 
 Implemented: repository structure, the API process with liveness and readiness endpoints, the
 worker process skeleton, shared contracts, configuration validation, the PostgreSQL schema with
@@ -23,7 +23,10 @@ and the review workflow: confident extractions complete on their own, the rest a
 by field, then approved or rejected, and observability: request ids that follow a request into its
 job, the worker and the AI calls; structured JSON logs; step timings on each job; the Processing
 and Audit Logs screens and a per-document activity timeline, and analytics: processing, review
-and correction rates over 7, 30 or 90 days in the viewer's timezone, from bounded, indexed queries.
+and correction rates over 7, 30 or 90 days in the viewer's timezone, from bounded, indexed queries,
+and security hardening: per-user rate limits and a daily processing quota, data erasure, an
+orphaned-file sweep, a Content-Security-Policy for the web app, and an OCR check of text-layer
+evidence before automatic completion ([security review](../security/security-review.md)).
 
 - Schema, constraints and indexes: [database/schema.md](../database/schema.md)
 - Text extraction and OCR: [processing/text-extraction.md](../processing/text-extraction.md)

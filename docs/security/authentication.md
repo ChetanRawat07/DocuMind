@@ -139,10 +139,14 @@ Automated tests need none of this: they sign tokens with a locally generated key
   hour). Mitigation: shorten the token lifetime in Supabase. Checking `session_id` against
   Supabase on every request would close the gap at the cost of a network call per request.
 - **Tokens live in `localStorage`** (supabase-js default), so an XSS bug could steal a session. A
-  strict Content-Security-Policy for the web app is required at deployment (Phase 16). React
+  Content-Security-Policy in the built `index.html` (Phase 13) allows only the app's own
+  scripts and connections to the API and Supabase; `frame-ancestors` still needs a host header
+  (Phase 16). React
   escapes rendered values and the app renders no server-provided HTML.
-- **No API rate limiting yet.** Supabase rate-limits sign-in and sign-up; DocuMind's own endpoints
-  are unthrottled until a later phase.
-- **No account deletion flow.** Deleting a user in Supabase leaves their DocuMind row and documents
-  in place; a deletion flow must remove stored files, then the rows (Phase 4 onward).
+- **Rate limits are per user and per process** (Phase 13, [security review](security-review.md)).
+  Requests without a valid token are not counted; flooding with them is left to the host's edge.
+  Supabase rate-limits sign-in and sign-up.
+- **Erasure keeps the Supabase account.** `DELETE /api/v1/me` removes the user's DocuMind data
+  ([ADR-010](../adr/010-data-retention-and-erasure.md)); the sign-in account must be deleted in
+  Supabase by hand, and deleting it there alone leaves the DocuMind data in place.
 - **MFA is not enforced** (`aal` is not checked).

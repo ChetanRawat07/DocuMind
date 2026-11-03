@@ -68,8 +68,9 @@ There is no transaction spanning both, so the write order decides what can go wr
 | Delete    | row + audit (one transaction), then object | logged as `Orphaned object <key>`; the user still sees the delete succeed | orphaned object                               |
 
 The design never produces a row pointing at a missing file. Orphans cost storage but expose
-nothing, because only rows grant access. A periodic sweep that lists keys without rows is future
-work (Phase 13).
+nothing, because only rows grant access. `npm run storage:sweep` lists objects with no row that are
+over 24 hours old (younger ones may be uploads in flight) and deletes them with `-- --delete`
+([ADR-010](../adr/010-data-retention-and-erasure.md)).
 
 ## Storage drivers
 
@@ -104,8 +105,9 @@ bucket in this project. Do that once credentials exist, before relying on it.
 
 ## Limits and known gaps
 
-- 10 MiB per file; no per-user quota or rate limit yet (Phase 13). Concurrent uploads each hold up
-  to 10 MiB in API memory.
+- 10 MiB per file. Per user: 10 uploads and reprocessing requests per minute, and 50 per 24 hours
+  (counted from the audit log, so deleting documents does not give the quota back). Both answer 429. Concurrent uploads each hold up to 10 MiB in API memory; the per-minute limit bounds this
+  per user, not across users.
 - Duplicate files are stored again; no content hashing yet.
 - Upload queues the document for processing in the same transaction
   ([job queue](../processing/job-queue.md)).

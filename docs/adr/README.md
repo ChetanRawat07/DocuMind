@@ -18,7 +18,7 @@ schedules for later phases.
 | [007](007-ocr-strategy.md)                            | Text extraction with pdf.js and tesseract.js    | Accepted | Phase 6    |
 | [008](008-retry-and-idempotency.md)                   | Retry and idempotency strategy                  | Accepted | Phase 9    |
 | [009](009-zero-cost-deployment.md)                    | Zero-cost deployment architecture               | Accepted | Phase 0    |
-| 010                                                   | Document retention strategy                     | Planned  | Later      |
+| [010](010-data-retention-and-erasure.md)              | Data retention and erasure                      | Accepted | Phase 13   |
 | [011](011-monorepo-and-toolchain.md)                  | Monorepo layout and toolchain                   | Accepted | Phase 0    |
 | [012](012-kysely-and-sql-migrations.md)               | Kysely with hand-written SQL migrations         | Accepted | Phase 1    |
 | [013](013-supabase-auth-bearer-jwks.md)               | Supabase Auth, bearer tokens verified via JWKS  | Accepted | Phase 2    |

@@ -18,13 +18,17 @@ Code:
 ```text
 extraction stored (worker)
         │
-        ├── overall ≥ 0.90 and no issues ──> completed (approved automatically)
+        ├── overall ≥ 0.90, no issues, evidence visible ──> completed (approved automatically)
         │
         └── otherwise ──> needs_review
                               │  reviewer confirms or corrects each flagged field
                               ├── approve ──> completed (values final)
                               └── reject  ──> rejected ──> reprocess ──> queued ──> …
 ```
+
+"Evidence visible": values grounded in a PDF's text layer must also be on the page as rendered
+(an OCR check, [details](document-extraction.md#evidence-a-reader-can-see-phase-13)); otherwise
+an `evidence_not_visible` issue sends the document to review.
 
 | Document status | Meaning                                  | Reviewer can                               |
 | --------------- | ---------------------------------------- | ------------------------------------------ |

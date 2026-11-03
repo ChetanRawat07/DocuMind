@@ -135,8 +135,12 @@ see [authentication](../security/authentication.md#user-provisioning)).
 the primary key, then skips. Exactly one row and one `user.registered` audit entry result (tested
 over HTTP with 8 concurrent requests).
 
-**Retention.** Account deletion must first delete the user's documents and stored objects
-(`ON DELETE RESTRICT` from `documents` enforces the order). Audit entries keep the user id.
+**Retention.** `DELETE /api/v1/me` erases a user (Phase 13, [ADR-010](../adr/010-data-retention-and-erasure.md)):
+one transaction locks the row, deletes the user's documents (everything else cascades), appends
+`user.data_erased` and deletes the row; then the files are removed. `ON DELETE RESTRICT` from
+`documents` enforces that order. Audit entries keep the user id. The upload transaction locks the
+same row (`FOR NO KEY UPDATE`, for the processing quota), so an upload in flight either commits
+before the erasure deletes its document, or fails on the missing user.
 
 ### documents
 
@@ -328,13 +332,17 @@ decision updates only `WHERE decision IS NULL`.
   `document.viewed` and `document.downloaded` (each file access, recorded before the first byte is
   sent), and `document.text_extracted` (actor `system`). Processing and review add
   `document.processing_requested`, `document.processing_failed`, `document.fields_extracted`,
-  `document.field_reviewed`, `document.approved` and `document.rejected`. Document entries carry
+  `document.field_reviewed`, `document.approved` and `document.rejected`; erasure adds
+  `user.data_erased` (metadata: the number of documents). Document entries carry
   only types, sizes, counts and field names, never the filename, values or text.
 
 **Queries.** A resource's timeline → `audit_logs_resource_occurred_at_id_idx`. A user's audit log
 (Phase 11) is two halves merged by id, each limited before the merge: the user's own entries →
 `audit_logs_actor_user_id_id_idx` (partial: system actions excluded), and system entries about
-the user's documents → a join to `documents` and the resource index. Pages use the identity `id`
+the user's documents → a join to `documents` and the resource index. The daily processing quota
+(Phase 13) counts the user's uploads and reprocessing requests of the last 24 hours →
+`audit_logs_processing_requests_idx`, partial on those two actions (about 0.1 ms for one user
+among 100,000 rows, measured in a rolled-back transaction). Pages use the identity `id`
 as the cursor: it is exact and increases with insertion, while a microsecond `occurred_at` would
 not survive a JavaScript `Date`.
 

@@ -119,7 +119,7 @@ disconnects, the storage stream is destroyed.
 - Substring search has no index (see above), and only filenames are searched. Searching document
   content needs text extraction (Phase 6).
 - No total count of matches: paging is "load more".
-- No rate limits on file reads (hardening phase).
+- File reads count toward the per-user limit of 300 requests per minute (Phase 13).
 - In development, React StrictMode runs effects twice, so one preview can record two
   `document.viewed` entries. Production builds do not.
 - Cursors issued before this phase (without a `sort`) are rejected with a 400; clients reload the

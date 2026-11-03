@@ -83,6 +83,10 @@ extraction) and 9 (asynchronous queue and workers) are complete.** The following
   failure rates, processing time, document types, confidence distribution, review rate, the share
   of reviewed values people corrected, and daily volume. The dashboard shows the last 30 days.
   Queries are bounded by the window and indexed ([details](docs/operations/analytics.md)).
+- Security hardening: per-user rate limits, a daily processing quota, "Delete all my data", an
+  orphaned-file sweep, a Content-Security-Policy for the web app, and an OCR check that values
+  completed without review are visible on the page, not only in a PDF's hidden text layer
+  ([security review](docs/security/security-review.md)).
 
 ## Architecture
 
@@ -194,6 +198,7 @@ Details, including recommended hardening, are in
 | `npm run db:seed`          | Insert demo data (idempotent; refused in production)       |
 | `npm run extract -- <id>`  | Extract a document's text by hand (the worker does it too) |
 | `npm run analyze -- <id>`  | Classify and extract fields; prints, stores nothing        |
+| `npm run storage:sweep`    | List stored files no document references (`-- --delete`)   |
 | `npm run ai:up`            | Start local Ollama (Docker) and download `qwen2.5:3b`      |
 | `npm run ai:check`         | One structured round trip through the configured provider  |
 | `npm run db:codegen`       | Regenerate row types from the migrated database            |
@@ -261,6 +266,7 @@ with a message naming the variable.
 | GET    | `/api/v1/health`                                 | None   | Liveness: `{ "status": "ok", "timestamp" }`                                                                                                                      |
 | GET    | `/api/v1/health/ready`                           | None   | Readiness: same body when the database answers; 503 otherwise                                                                                                    |
 | GET    | `/api/v1/me`                                     | Bearer | The signed-in user; creates the user record on first call                                                                                                        |
+| DELETE | `/api/v1/me`                                     | Bearer | Erases all your documents, files and your profile; 204 ([details](docs/adr/010-data-retention-and-erasure.md))                                                   |
 | GET    | `/api/v1/documents`                              | Bearer | The caller's documents: `q`, `status`, `type`, `format`, `sort`, `limit` (1–100, default 20), opaque `cursor` ([details](docs/documents/document-management.md)) |
 | GET    | `/api/v1/documents/:id`                          | Bearer | One of the caller's documents; 404 for other users' and unknown ids                                                                                              |
 | GET    | `/api/v1/documents/:id/content`                  | Bearer | The file; `disposition=inline` (preview) or `attachment` (default, download); audited; 404 if not yours                                                          |
@@ -277,6 +283,10 @@ with a message naming the variable.
 | GET    | `/api/v1/processing/jobs`                        | Bearer | Your 50 most recent jobs across documents; `?status=` filter                                                                                                     |
 | GET    | `/api/v1/audit-logs`                             | Bearer | Your actions and the system's actions on your documents, newest first; `?cursor=` paging                                                                         |
 | GET    | `/api/v1/analytics`                              | Bearer | Your analytics: `days` = 7, 30 or 90; `tz` = your IANA timezone                                                                                                  |
+
+Every authenticated endpoint allows 300 requests per minute per user; upload and reprocessing
+also share 10 per minute and 50 per 24 hours. Over a limit the API answers 429 (with
+`Retry-After` for the per-minute limits).
 
 All errors use `{ "error": { "code": "<HTTP_STATUS_NAME>", "message": "…" } }`. Server errors
 never include internal details. Authenticated endpoints return 401 (with `WWW-Authenticate`) for a

@@ -91,8 +91,27 @@ clean. Amounts compare with a tolerance of 0.05 for rounding.
 | `non_positive_amount`       | all         | Total or contract value above 0 (credit notes are flagged for review)     |
 | `too_few_parties`           | contract    | At least two parties when any are found                                   |
 
-Other issue codes: `missing_required_field`, `evidence_not_found`, `value_not_in_evidence` and
-`text_truncated`.
+Other issue codes: `missing_required_field`, `evidence_not_found`, `value_not_in_evidence`,
+`evidence_not_visible` (see below) and `text_truncated`.
+
+### Evidence a reader can see (Phase 13)
+
+A PDF's text layer can hold text that is never drawn: invisible render mode, white on white, off
+the page. Evidence found only there would still count as grounded, so a crafted PDF could reach
+automatic completion with values no reader sees. Before an extraction completes without review,
+the text-layer pages that hold its evidence are rendered and read with OCR
+(`visible-evidence.ts`, `TextExtractionService.readRenderedPages`):
+
+- Every quote must also be found in what OCR reads. Each value whose quote is not gets an
+  `evidence_not_visible` issue, which sends the document to review with those fields flagged.
+  Values are never changed.
+- Pages read with OCR in the first place are trusted as read.
+- At most 3 pages are rendered; evidence spread over more pages goes to review unrendered. A
+  rendering error also means review, never a failed job.
+- Extractions that go to review anyway are not checked: a person sees the file.
+- Cost: about 2 s per rendered page on the development machine (measured on the dev database's
+  two automatically completed invoices; neither was sent to review by the check). OCR misreads
+  send a document to review, which is the safe direction.
 
 ## Confidence
 
@@ -202,3 +221,6 @@ caught it: its quote did not show the value. That is why `value_not_in_evidence`
 - **Untested on Cloudflare.** The JSON Schemas use `anyOf` for nullable values and `format: date`.
   Ollama handles them; Workers AI has only been tested for authentication failure.
 - **English only**, and one currency per document.
+- **The visibility check reads text, not meaning.** Visible text that is small or low contrast
+  but readable by OCR passes, and the overall confidence is not lowered by the check (only the
+  issue is added).
