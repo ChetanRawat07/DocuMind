@@ -3,7 +3,7 @@
 This document describes the architecture **as implemented** and marks planned parts explicitly.
 Decisions and their reasoning live in [the ADRs](../adr/README.md).
 
-## Current state: Phase 13 (security hardening)
+## Current state: Phase 14 (testing and quality hardening)
 
 Implemented: repository structure, the API process with liveness and readiness endpoints, the
 worker process skeleton, shared contracts, configuration validation, the PostgreSQL schema with
@@ -26,7 +26,9 @@ and Audit Logs screens and a per-document activity timeline, and analytics: proc
 and correction rates over 7, 30 or 90 days in the viewer's timezone, from bounded, indexed queries,
 and security hardening: per-user rate limits and a daily processing quota, data erasure, an
 orphaned-file sweep, a Content-Security-Policy for the web app, and an OCR check of text-layer
-evidence before automatic completion ([security review](../security/security-review.md)).
+evidence before automatic completion ([security review](../security/security-review.md)), and a
+test suite checked for gaps with coverage thresholds and mutation testing
+([testing strategy](../testing/testing-strategy.md)).
 
 - Schema, constraints and indexes: [database/schema.md](../database/schema.md)
 - Text extraction and OCR: [processing/text-extraction.md](../processing/text-extraction.md)

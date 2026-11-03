@@ -187,6 +187,7 @@ Details, including recommended hardening, are in
 | `npm run build`            | Production build of all packages                           |
 | `npm run check`            | Format check, lint, typecheck and all tests                |
 | `npm test`                 | All tests (database tests need `npm run infra:up`)         |
+| `npm run test:coverage`    | All tests with coverage; fails below the thresholds        |
 | `npm run lint`             | ESLint                                                     |
 | `npm run format`           | Prettier write                                             |
 | `npm run typecheck`        | TypeScript in every package                                |
@@ -217,7 +218,9 @@ API tests are split into two Vitest projects:
 - `integration`: runs against `TEST_DATABASE_URL`. The suite **drops and recreates** that database
   on every run and refuses any database name that does not end in `_test`.
 
-Run one project with `npx vitest run --project unit` (or `integration`) inside `apps/api`.
+Run one project with `npx vitest run --project unit` (or `integration`) inside `apps/api`. No test
+calls a live AI provider, Supabase or a storage bucket. The layers, the fakes, coverage and the
+mutation checks are described in [docs/testing/testing-strategy.md](docs/testing/testing-strategy.md).
 
 ## Environment variables
 

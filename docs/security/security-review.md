@@ -84,7 +84,6 @@ certification.
 
 ## Open items
 
-- **Phase 14:** an end-to-end browser test of erasure and the CSP with a real Supabase project.
 - **Phase 15:** re-measure the visibility check's OCR time on the free instance (0.1 CPU), and the
   quota query at realistic volume.
 - **Phase 16:**
@@ -93,3 +92,5 @@ certification.
   - Schedule the sweep's dry run.
   - Document the manual Supabase account deletion.
   - Re-verify the Supabase auth settings.
+  - A browser smoke test of sign-in, erasure and the CSP against the real Supabase project
+    (moved from Phase 14, which has no Supabase project to test against).

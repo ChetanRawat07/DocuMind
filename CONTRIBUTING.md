@@ -24,7 +24,8 @@ One logical change per commit. Do not mix refactors, features and formatting.
 ## Before opening a pull request
 
 ```bash
-npm run check   # format check, lint, typecheck, all tests
+npm run check           # format check, lint, typecheck, all tests
+npm run test:coverage   # fails if coverage drops below the thresholds
 npm audit
 ```
 
