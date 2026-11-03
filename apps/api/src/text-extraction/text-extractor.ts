@@ -1,8 +1,17 @@
-import { imageDimensions } from './image-dimensions.js';
+import { createCanvas, loadImage } from '@napi-rs/canvas';
+import { type ImageDimensions, imageDimensions } from './image-dimensions.js';
 import { normalizeExtractedText } from './normalize-text.js';
 import type { OcrEngine } from './ocr-engine.js';
 import { MAX_OCR_PIXELS, openPdf } from './pdf-document.js';
 import { TextExtractionError } from './text-extraction-error.js';
+
+/**
+ * Images above this many pixels are downscaled before OCR: A4 at 200 DPI,
+ * the resolution PDF pages are rendered at (pdf-document.ts). A 20 MP photo
+ * then peaks about 250 MB lower, which keeps it within a 512 MB instance
+ * (docs/operations/performance-review.md).
+ */
+export const OCR_IMAGE_PIXELS = 1654 * 2339;
 
 /** Longest PDF processed. Bounds the time one document can take on a small instance. */
 export const MAX_PDF_PAGES = 50;
@@ -103,7 +112,27 @@ async function recognizeImage(content: Buffer, mimeType: string, ocr: OcrEngine)
       `The image is ${dimensions.width}×${dimensions.height} pixels; the limit is ${MAX_OCR_PIXELS} pixels`,
     );
   }
-  return ocr.recognize(content);
+  return ocr.recognize(await fitForOcr(content, dimensions));
+}
+
+async function fitForOcr(content: Buffer, { width, height }: ImageDimensions): Promise<Buffer> {
+  const scale = Math.sqrt(OCR_IMAGE_PIXELS / (width * height));
+  if (scale >= 1) return content;
+  let image;
+  try {
+    image = await loadImage(content);
+  } catch (error) {
+    throw new TextExtractionError('unreadable_image', 'The image could not be decoded', {
+      cause: error,
+    });
+  }
+  const canvas = createCanvas(Math.floor(width * scale), Math.floor(height * scale));
+  const context = canvas.getContext('2d');
+  // White background: transparency confuses OCR.
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return canvas.toBuffer('image/png');
 }
 
 function ocrPage(pageNumber: number, result: { text: string; confidence: number }) {

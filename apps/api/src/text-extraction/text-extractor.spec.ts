@@ -4,7 +4,7 @@ import { imageDimensions } from './image-dimensions.js';
 import { OcrEngine } from './ocr-engine.js';
 import { MAX_OCR_PIXELS } from './pdf-document.js';
 import { TextExtractionError } from './text-extraction-error.js';
-import { extractText, MAX_PDF_PAGES } from './text-extractor.js';
+import { extractText, MAX_PDF_PAGES, OCR_IMAGE_PIXELS } from './text-extractor.js';
 
 // Real pdf.js and Tesseract on synthetic documents: slower than a unit test, but OCR cannot be faked meaningfully.
 const OCR_TIMEOUT = 60_000;
@@ -135,10 +135,42 @@ describe('extractText', () => {
         extractText(png(1, MAX_OCR_PIXELS + 1), 'image/png', ocr),
         'image_too_large',
       );
-      // At the limit the image reaches OCR, stubbed here so the fake pixels are never decoded.
-      const reachedOcr = new Error('reached OCR');
-      const stub = { recognize: () => Promise.reject(reachedOcr) } as unknown as OcrEngine;
-      await expect(extractText(png(1, MAX_OCR_PIXELS), 'image/png', stub)).rejects.toBe(reachedOcr);
+      // At the limit the size check passes; the fake pixel data then fails to decode.
+      await expectFailure(
+        extractText(png(1, MAX_OCR_PIXELS), 'image/png', ocr),
+        'unreadable_image',
+      );
+    });
+
+    it('downscales an image over OCR_IMAGE_PIXELS before OCR, keeping its aspect ratio', async () => {
+      const received: Buffer[] = [];
+      const stub = {
+        recognize: (image: Buffer) => {
+          received.push(image);
+          return Promise.resolve({ text: 'tiny', confidence: 0.9 });
+        },
+      } as unknown as OcrEngine;
+      const small = textImage(['tiny']);
+
+      await extractText(
+        textImage(['tiny'], 'png', { width: 4000, height: 5000 }),
+        'image/png',
+        stub,
+      );
+      await extractText(small, 'image/png', stub);
+
+      const scaled = imageDimensions(received[0] as Buffer, 'image/png');
+      expect((scaled?.width ?? 0) * (scaled?.height ?? 0)).toBeLessThanOrEqual(OCR_IMAGE_PIXELS);
+      expect((scaled?.width ?? 0) / (scaled?.height ?? 1)).toBeCloseTo(4000 / 5000, 2);
+      expect(received[1]).toBe(small);
+    });
+
+    it('refuses an oversized image whose data cannot be decoded', async () => {
+      const png = textImage(['tiny']);
+      png.writeUInt32BE(4000, 16);
+      png.writeUInt32BE(5000, 20);
+
+      await expectFailure(extractText(png, 'image/png', ocr), 'unreadable_image');
     });
 
     it('refuses an image with a corrupt header', async () => {
