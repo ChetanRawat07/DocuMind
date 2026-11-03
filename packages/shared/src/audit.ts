@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+/** Largest PostgreSQL bigint, the type of audit log ids. */
+const MAX_BIGINT = 9_223_372_036_854_775_807n;
+
 export const DEFAULT_AUDIT_LOG_PAGE_SIZE = 50;
 export const MAX_AUDIT_LOG_PAGE_SIZE = 100;
 
@@ -33,7 +36,9 @@ export const auditLogQuerySchema = z.object({
     .default(DEFAULT_AUDIT_LOG_PAGE_SIZE),
   cursor: z
     .string()
-    .regex(/^\d{1,19}$/, 'Invalid cursor')
+    .regex(/^\d{1,19}$/, { message: 'Invalid cursor', abort: true })
+    // Ids are bigint: a larger value would fail in PostgreSQL as a 500, not a 400.
+    .refine((cursor) => BigInt(cursor) <= MAX_BIGINT, 'Invalid cursor')
     .optional(),
 });
 export type AuditLogQuery = z.infer<typeof auditLogQuerySchema>;
