@@ -33,4 +33,15 @@ export abstract class ObjectStorage {
 
   /** Removes the object. Removing a missing object succeeds, so retries are safe. */
   abstract delete(key: string): Promise<void>;
+
+  /**
+   * Every stored object with a key the application generates, in no
+   * particular order. For maintenance (the orphan sweep), not for requests.
+   */
+  abstract list(): AsyncIterable<ListedObject>;
+}
+
+export interface ListedObject {
+  readonly key: string;
+  readonly lastModified: Date;
 }

@@ -15,6 +15,7 @@
     "ai:check": "npm run build && node --env-file-if-exists=../../.env dist/cli/ai-check.js",
     "extract": "npm run build && node --env-file-if-exists=../../.env dist/cli/extract-text.js",
     "analyze": "npm run build && node --env-file-if-exists=../../.env dist/cli/analyze-document.js",
+    "storage:sweep": "npm run build && node --env-file-if-exists=../../.env dist/cli/sweep-storage.js",
     "db:migrate": "npm run build && node --env-file-if-exists=../../.env dist/database/migrate.js latest",
     "db:rollback": "npm run build && node --env-file-if-exists=../../.env dist/database/migrate.js down",
     "db:reset": "npm run build && node --env-file-if-exists=../../.env dist/database/migrate.js reset",

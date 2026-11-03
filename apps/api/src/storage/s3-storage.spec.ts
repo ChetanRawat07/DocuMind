@@ -3,6 +3,7 @@ import { text } from 'node:stream/consumers';
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  ListObjectsV2Command,
   NoSuchKey,
   PutObjectCommand,
   type S3Client,
@@ -22,6 +23,36 @@ function storageWithFakeClient() {
 }
 
 describe('S3Storage', () => {
+  it('lists every page of document keys, skipping keys the application would not create', async () => {
+    const { storage, send } = storageWithFakeClient();
+    const modified = new Date('2026-11-01T00:00:00Z');
+    send
+      .mockResolvedValueOnce({
+        Contents: [
+          { Key: KEY, LastModified: modified },
+          { Key: 'documents/notes.txt', LastModified: modified },
+        ],
+        IsTruncated: true,
+        NextContinuationToken: 'page-2',
+      })
+      .mockResolvedValueOnce({
+        Contents: [{ Key: KEY.replace('.pdf', '.png'), LastModified: modified }],
+      });
+
+    const listed = [];
+    for await (const object of storage.list()) listed.push(object);
+
+    expect(listed).toEqual([
+      { key: KEY, lastModified: modified },
+      { key: KEY.replace('.pdf', '.png'), lastModified: modified },
+    ]);
+    const inputs = send.mock.calls.map(([command]) => (command as ListObjectsV2Command).input);
+    expect(inputs).toEqual([
+      { Bucket: 'documind-documents', Prefix: 'documents/', ContinuationToken: undefined },
+      { Bucket: 'documind-documents', Prefix: 'documents/', ContinuationToken: 'page-2' },
+    ]);
+  });
+
   it('puts the object into the bucket with its content type and length', async () => {
     const { storage, send } = storageWithFakeClient();
     const body = Buffer.from('%PDF-1.7');

@@ -2,13 +2,19 @@ import { Readable } from 'node:stream';
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  ListObjectsV2Command,
   NoSuchKey,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
 import type { OnApplicationShutdown } from '@nestjs/common';
-import { ObjectNotFoundError, ObjectStorage, type StoredObject } from './object-storage.js';
-import { assertStorageKey } from './storage-key.js';
+import {
+  type ListedObject,
+  ObjectNotFoundError,
+  ObjectStorage,
+  type StoredObject,
+} from './object-storage.js';
+import { assertStorageKey, STORAGE_KEY_PATTERN } from './storage-key.js';
 
 export interface S3StorageOptions {
   readonly endpoint: string;
@@ -82,6 +88,25 @@ export class S3Storage extends ObjectStorage implements OnApplicationShutdown {
     assertStorageKey(key);
     // S3 answers 204 for a missing key, so this is already idempotent.
     await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
+  }
+
+  async *list(): AsyncIterable<ListedObject> {
+    let continuationToken: string | undefined;
+    do {
+      const page = await this.client.send(
+        new ListObjectsV2Command({
+          Bucket: this.bucket,
+          Prefix: 'documents/',
+          ContinuationToken: continuationToken,
+        }),
+      );
+      for (const object of page.Contents ?? []) {
+        if (object.Key && object.LastModified && STORAGE_KEY_PATTERN.test(object.Key)) {
+          yield { key: object.Key, lastModified: object.LastModified };
+        }
+      }
+      continuationToken = page.IsTruncated ? page.NextContinuationToken : undefined;
+    } while (continuationToken);
   }
 
   onApplicationShutdown(): void {

@@ -1,8 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, open, rename, rm, writeFile } from 'node:fs/promises';
-import { dirname, relative, resolve, sep } from 'node:path';
-import { ObjectNotFoundError, ObjectStorage, type StoredObject } from './object-storage.js';
-import { assertStorageKey } from './storage-key.js';
+import { mkdir, open, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { dirname, join, relative, resolve, sep } from 'node:path';
+import {
+  type ListedObject,
+  ObjectNotFoundError,
+  ObjectStorage,
+  type StoredObject,
+} from './object-storage.js';
+import { assertStorageKey, STORAGE_KEY_PATTERN } from './storage-key.js';
 
 /**
  * Stores objects as files under `root`. For development and tests only: the
@@ -47,6 +52,25 @@ export class FilesystemStorage extends ObjectStorage {
 
   async delete(key: string): Promise<void> {
     await rm(this.pathFor(key), { force: true });
+  }
+
+  /** Temporary files of interrupted writes do not match the key pattern and are skipped. */
+  async *list(): AsyncIterable<ListedObject> {
+    const root = resolve(this.root);
+    let entries;
+    try {
+      entries = await readdir(root, { recursive: true, withFileTypes: true });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+      throw error;
+    }
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      const path = join(entry.parentPath, entry.name);
+      const key = relative(root, path).split(sep).join('/');
+      if (!STORAGE_KEY_PATTERN.test(key)) continue;
+      yield { key, lastModified: (await stat(path)).mtime };
+    }
   }
 
   /** Absolute file path for a key; never outside `root`. */
