@@ -271,6 +271,16 @@ export class DocumentsRepository {
       .executeTakeFirst();
     return row ? toDocument(row) : null;
   }
+
+  /** Deletes all of the owner's documents (their rows cascade). Returns their storage keys. */
+  async deleteAllForOwner(ownerId: string, executor = this.db): Promise<string[]> {
+    const rows = await executor
+      .deleteFrom('documents')
+      .where('user_id', '=', ownerId)
+      .returning('storage_key')
+      .execute();
+    return rows.map((row) => row.storage_key);
+  }
 }
 
 /**

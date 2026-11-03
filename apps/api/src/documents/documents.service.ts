@@ -22,6 +22,9 @@ import { validateUpload } from './upload-validation.js';
 /** Jobs shown in a document's history; older ones stay in the table. */
 const JOB_HISTORY_LIMIT = 20;
 
+/** Files removed at once when erasing a user's data. */
+const ERASE_CONCURRENCY = 10;
+
 /**
  * Uploads and deletions span two systems, object storage and PostgreSQL, with
  * no shared transaction. The write order keeps the database truthful:
@@ -212,6 +215,51 @@ export class DocumentsService {
 
     await this.removeObject(deleted.storageKey, 'after deleting its document');
     return true;
+  }
+
+  /**
+   * Erases everything DocuMind holds about the owner: their documents
+   * (with text, extractions, reviews and jobs), their files and their user
+   * row, recorded as `user.data_erased`. The audit log keeps the user's id and
+   * entries, which hold no document content. The Supabase account is not
+   * ours to delete: signing in again starts an empty account.
+   *
+   * Same order as a single delete: rows first, then files. Locking the user
+   * row waits for uploads in flight, and makes a later one fail on the
+   * missing user instead of leaving a document behind.
+   */
+  async eraseOwner(ownerId: string): Promise<{ readonly documents: number }> {
+    const storageKeys = await this.db.transaction().execute(async (trx) => {
+      const owner = await trx
+        .selectFrom('users')
+        .select('id')
+        .where('id', '=', ownerId)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!owner) return [];
+      const keys = await this.documents.deleteAllForOwner(ownerId, trx);
+      await this.auditLogs.append(
+        {
+          actor: { type: 'user', userId: ownerId },
+          action: 'user.data_erased',
+          resourceType: 'user',
+          resourceId: ownerId,
+          metadata: { documents: keys.length },
+        },
+        trx,
+      );
+      await trx.deleteFrom('users').where('id', '=', ownerId).execute();
+      return keys;
+    });
+
+    for (let start = 0; start < storageKeys.length; start += ERASE_CONCURRENCY) {
+      await Promise.all(
+        storageKeys
+          .slice(start, start + ERASE_CONCURRENCY)
+          .map((key) => this.removeObject(key, 'after erasing its owner')),
+      );
+    }
+    return { documents: storageKeys.length };
   }
 
   /** Best effort: a failure leaves an orphaned object, which is logged for cleanup. */
