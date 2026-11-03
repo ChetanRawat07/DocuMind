@@ -3,7 +3,7 @@
 This document describes the architecture **as implemented** and marks planned parts explicitly.
 Decisions and their reasoning live in [the ADRs](../adr/README.md).
 
-## Current state: Phase 14 (testing and quality hardening)
+## Current state: Phase 15 (performance and scalability review)
 
 Implemented: repository structure, the API process with liveness and readiness endpoints, the
 worker process skeleton, shared contracts, configuration validation, the PostgreSQL schema with
@@ -28,7 +28,9 @@ and security hardening: per-user rate limits and a daily processing quota, data 
 orphaned-file sweep, a Content-Security-Policy for the web app, and an OCR check of text-layer
 evidence before automatic completion ([security review](../security/security-review.md)), and a
 test suite checked for gaps with coverage thresholds and mutation testing
-([testing strategy](../testing/testing-strategy.md)).
+([testing strategy](../testing/testing-strategy.md)), and a performance review at 1 million
+documents that fixed the job queries, OCR memory for large photos and JIT overhead
+([performance review](../operations/performance-review.md)).
 
 - Schema, constraints and indexes: [database/schema.md](../database/schema.md)
 - Text extraction and OCR: [processing/text-extraction.md](../processing/text-extraction.md)

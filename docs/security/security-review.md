@@ -84,8 +84,9 @@ certification.
 
 ## Open items
 
-- **Phase 15:** re-measure the visibility check's OCR time on the free instance (0.1 CPU), and the
-  quota query at realistic volume.
+- **Phase 15 (done):** OCR measured under a 10% CPU quota (86 s a page), and the queries measured
+  at 1 million documents ([performance review](../operations/performance-review.md)). The real
+  free instance is still to be measured in Phase 16.
 - **Phase 16:**
   - Host headers for the web app (HSTS, `frame-ancestors`).
   - A shared store for rate limits if the API runs as more than one instance.

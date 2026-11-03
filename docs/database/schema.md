@@ -43,6 +43,7 @@ erDiagram
     processing_jobs {
         uuid id PK
         uuid document_id FK
+        uuid user_id FK "document's owner (Phase 15)"
         text status
         text stage
         integer attempts
@@ -199,6 +200,10 @@ the worker restores it while running the job, so its logs and audit entries trac
 request. `text_extraction_ms` and `ai_ms` hold each step's duration from the attempt that last ran
 it, written with the same fence as `stage`. See [operations/observability.md](../operations/observability.md).
 
+**Owner (Phase 15).** `user_id` is a copy of the document's owner, so a user's jobs are read
+through their own index. A composite foreign key `(document_id, user_id) → documents (id, user_id)`
+keeps the copy equal to the owner and cascades deletes. See ADR-020.
+
 **State.** `status`: `queued → running → succeeded | failed`. A retryable failure returns the job to
 `queued` with a later `available_at` (backoff) and incremented `attempts`. `failed` is terminal (the
 dead-letter state); `last_error_code`/`last_error_message` (capped at 2,000 characters) keep the
@@ -213,16 +218,18 @@ reason.
 | `processing_jobs_lease_matches_status`                                                                         | A running job always has an owner and an unexpired-at-claim lease; a non-running job never holds one |
 | `processing_jobs_finished_at_matches_status`                                                                   | `finished_at` is set exactly for finished jobs                                                       |
 | `processing_jobs_id_document_id_key`                                                                           | Target for the composite FK from `document_extractions`                                              |
+| `processing_jobs_document_owner_fkey` (`(document_id, user_id) → documents (id, user_id)`)                     | A job's `user_id` is always its document's owner                                                     |
 
 **Queries and indexes.**
 
-| Query (phase)                                                                                                                | Index                                                                                             |
-| ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| Claim next job: `WHERE status = 'queued' AND available_at <= now() ORDER BY available_at LIMIT 1 FOR UPDATE SKIP LOCKED` (9) | `processing_jobs_claimable_idx` (partial, `status = 'queued'`)                                    |
-| Recover stale jobs: `WHERE status = 'running' AND lease_expires_at < now()` (9)                                              | `processing_jobs_running_lease_idx` (partial)                                                     |
-| Active job for a document (1)                                                                                                | `processing_jobs_one_active_per_document_key`                                                     |
-| A document's job history; FK cascade from `documents` (5)                                                                    | `processing_jobs_document_id_created_at_idx`                                                      |
-| A user's jobs and the Processing summary: join `documents` on `user_id` (11)                                                 | `documents_user_id_*` then each document's jobs; no index on the user's jobs by time (sorts them) |
+| Query (phase)                                                                                                                | Index                                                          |
+| ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Claim next job: `WHERE status = 'queued' AND available_at <= now() ORDER BY available_at LIMIT 1 FOR UPDATE SKIP LOCKED` (9) | `processing_jobs_claimable_idx` (partial, `status = 'queued'`) |
+| Recover stale jobs: `WHERE status = 'running' AND lease_expires_at < now()` (9)                                              | `processing_jobs_running_lease_idx` (partial)                  |
+| Active job for a document (1)                                                                                                | `processing_jobs_one_active_per_document_key`                  |
+| A document's job history; FK cascade from `documents` (5)                                                                    | `processing_jobs_document_id_created_at_idx`                   |
+| A user's jobs, newest first (11, 15)                                                                                         | `processing_jobs_user_id_created_at_id_idx`                    |
+| Processing summary: active jobs (`finished_at IS NULL`) and jobs finished in the window (11, 15)                             | `processing_jobs_user_id_finished_at_idx`                      |
 
 Partial indexes stay small: finished jobs, which are the large majority over time, are not in the
 claim or lease indexes at all.
@@ -241,8 +248,9 @@ DO NOTHING`. The partial unique index is the arbiter; ten concurrent enqueues pr
 - _Pooler compatibility:_ all of this uses row locks inside a transaction, which work through
   Supabase's transaction-mode pooler. Session-level advisory locks would not.
 
-**Retention.** Rows are deleted with their document. Job history otherwise grows; Phase 15 should
-consider pruning or archiving finished jobs.
+**Retention.** Rows are deleted with their document. Job history otherwise grows; the user's
+queries stay bounded by the indexes above, and the
+[performance review](../operations/performance-review.md) covers archiving at higher volume.
 
 ### document_extractions
 
@@ -382,6 +390,7 @@ Configured per process in `apps/api/src/database/create-database.ts`:
 | `max` connections                     | `DATABASE_POOL_MAX` (default 10)               | The API and the worker each have a pool; the sum must stay under the server's connection limit.                                       |
 | `statement_timeout`                   | `DATABASE_STATEMENT_TIMEOUT_MS` (default 30 s) | A runaway query cannot hold a connection forever.                                                                                     |
 | `idle_in_transaction_session_timeout` | 60 s                                           | A transaction left open by a bug cannot hold row locks indefinitely.                                                                  |
+| `jit`                                 | `off`, set on the role by a migration          | JIT compile time exceeded the run time of the queries it triggered on; a role setting survives the transaction pooler (ADR-020).      |
 | `application_name`                    | `documind-api`, `documind-worker`, …           | Identifies each process in `pg_stat_activity`.                                                                                        |
 | Pool `error` listener                 | logs                                           | An idle connection dropped by the server (for example on a restart) would otherwise crash the process. Verified by stopping Postgres. |
 

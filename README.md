@@ -87,6 +87,9 @@ extraction) and 9 (asynchronous queue and workers) are complete.** The following
   orphaned-file sweep, a Content-Security-Policy for the web app, and an OCR check that values
   completed without review are visible on the page, not only in a PDF's hidden text layer
   ([security review](docs/security/security-review.md)).
+- Measured performance: API latency, OCR time and memory, and queue throughput at 1 million
+  documents, with what runs out first as volume grows
+  ([performance review](docs/operations/performance-review.md)).
 
 ## Architecture
 

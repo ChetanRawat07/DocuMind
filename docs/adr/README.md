@@ -28,5 +28,6 @@ schedules for later phases.
 | [017](017-evidence-based-confidence.md)               | Evidence-based extraction confidence            | Accepted | Phase 8    |
 | [018](018-human-review-workflow.md)                   | Human review and automatic completion           | Accepted | Phase 10   |
 | [019](019-observability-without-external-services.md) | Observability without external services         | Accepted | Phase 11   |
+| [020](020-job-owner-and-jit.md)                       | Job owner column and JIT off                    | Accepted | Phase 15   |
 
 New ADRs use [template.md](template.md).

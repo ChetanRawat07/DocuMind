@@ -14,6 +14,7 @@ stored file (object storage)
   │          otherwise → render at 200 DPI → Tesseract OCR           (method ocr, with confidence)
   └─ PNG / JPEG ─ read width × height from the header
                   > 25 megapixels → image_too_large · bad header → unreadable_image
+                  > A4 at 200 DPI (3.9 MP) → downscaled first; undecodable → unreadable_image
                   otherwise → Tesseract OCR as page 1                 (method ocr)
   → normalize each page's text
   → one transaction: replace document_texts + document_text_pages, append audit entry
@@ -128,6 +129,12 @@ Two changes came from these measurements:
 - Rendering at 200 instead of 300 DPI: about 15% less memory and a third less time, with no loss
   of accuracy on the samples.
 - Reusing one canvas: a canvas per page grew the process by about 30 MB a page.
+
+Phase 15 measured the free host's limits ([performance review](../operations/performance-review.md)):
+
+- A dense scanned page took about 3 s on a full core and 86 s under a 10% CPU quota.
+- A 20 MP photo needed +524 MB, more than the 512 MB instance has. Images are now downscaled to
+  A4 at 200 DPI before OCR, the resolution PDF pages use, which brought it to +278 MB.
 
 The remaining footprint is mostly Tesseract's WebAssembly heap and native image buffers, outside
 the V8 heap, so `--max-old-space-size` does not bound it.

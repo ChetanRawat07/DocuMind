@@ -141,7 +141,13 @@ RETURNING *;
 
 - **Slow crash recovery:** a crashed worker's job waits up to the lease, 15 minutes by default.
 - **One job at a time:** each worker process handles a single job; there is no per-process
-  concurrency setting.
+  concurrency setting. The worker sits idle during AI calls. The queue itself is not the limit:
+  16 workers claimed 1,625 jobs a second in Phase 15
+  ([performance review](../operations/performance-review.md)).
+- **Lease against slow CPUs:** with no heartbeat, a job must finish within its 15-minute lease. On
+  the free host (0.1 CPU) OCR takes about 86 s a page, so a 20-page scan would outlast it. The
+  demo's single worker cannot be taken over mid-run, but several workers on slow CPUs would
+  repeat each other's work.
 - **Coarse stages:** stages are `text_extraction` and `ai_extraction` only. Classification and
   validation run inside the AI stage.
 - **Polling:** latency up to `WORKER_POLL_INTERVAL_MS` after an empty poll.
