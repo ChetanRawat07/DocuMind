@@ -1,5 +1,5 @@
 import type { DocumentType } from '@documind/shared';
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { AiProvider } from '../ai/ai-provider.js';
 import { generateStructured } from '../ai/generate-structured.js';
 import { AuditLogsRepository } from '../audit/audit-logs.repository.js';
@@ -7,7 +7,10 @@ import { DATABASE } from '../database/database.module.js';
 import type { DatabaseExecutor } from '../database/database.types.js';
 import type { JsonArray, JsonObject } from '../database/generated/database.js';
 import { DocumentsRepository } from '../documents/documents.repository.js';
+import { canSkipReview } from '../review/review-fields.js';
 import { DocumentTextsRepository } from '../text-extraction/document-texts.repository.js';
+import { TextExtractionService } from '../text-extraction/text-extraction.service.js';
+import type { ExtractedPage } from '../text-extraction/text-extractor.js';
 import { type Assessment, assessExtraction, CONFIDENCE } from './assess-extraction.js';
 import {
   DocumentExtractionsRepository,
@@ -21,6 +24,11 @@ import {
 } from './extraction-prompts.js';
 import { EXTRACTION_SCHEMAS } from './extraction-schemas.js';
 import { locateEvidence } from './evidence.js';
+import {
+  fieldsWithoutVisibleEvidence,
+  MAX_RENDERED_EVIDENCE_PAGES,
+  textLayerEvidencePages,
+} from './visible-evidence.js';
 
 /** PostgreSQL foreign_key_violation. */
 const FOREIGN_KEY_VIOLATION = '23503';
@@ -79,6 +87,8 @@ export type DocumentAnalysis = ExtractedAnalysis | UnsupportedAnalysis;
  */
 @Injectable()
 export class DocumentAnalysisService {
+  private readonly logger = new Logger(DocumentAnalysisService.name);
+
   constructor(
     @Inject(DATABASE) private readonly db: DatabaseExecutor,
     private readonly documents: DocumentsRepository,
@@ -86,6 +96,7 @@ export class DocumentAnalysisService {
     private readonly extractions: DocumentExtractionsRepository,
     private readonly auditLogs: AuditLogsRepository,
     private readonly ai: AiProvider,
+    private readonly textExtraction: TextExtractionService,
   ) {}
 
   /** Returns null when the document does not exist. */
@@ -131,13 +142,58 @@ export class DocumentAnalysisService {
       documentType,
       schemaVersion: EXTRACTION_SCHEMAS[documentType].version,
       extractionPrompt: extraction.prompt,
-      ...assessExtraction({
+      ...(await this.confirmVisibleEvidence(
+        documentId,
         documentType,
-        extraction: extraction.data,
-        pages: documentText.pages,
-        classificationConfidence: base.classificationConfidence,
-        textTruncated: text.length > EXTRACTION_TEXT_LIMIT,
-      }),
+        assessExtraction({
+          documentType,
+          extraction: extraction.data,
+          pages: documentText.pages,
+          classificationConfidence: base.classificationConfidence,
+          textTruncated: text.length > EXTRACTION_TEXT_LIMIT,
+        }),
+        documentText.pages,
+      )),
+    };
+  }
+
+  /**
+   * An extraction that would complete without review must be grounded in
+   * what a reader sees. Text-layer pages holding its evidence are rendered and
+   * read with OCR; values whose evidence is not there get an
+   * `evidence_not_visible` issue, which sends the document to review.
+   * Extractions going to review anyway are not checked: a person sees the
+   * file. Values are never changed, only flagged.
+   */
+  private async confirmVisibleEvidence(
+    documentId: string,
+    documentType: DocumentType,
+    assessment: Assessment,
+    pages: readonly ExtractedPage[],
+  ): Promise<Assessment> {
+    if (!canSkipReview(assessment)) return assessment;
+    const pageNumbers = textLayerEvidencePages(documentType, assessment.fields, pages);
+    if (pageNumbers.length === 0) return assessment;
+
+    // OCR pages are already read from the rendered image.
+    const visible = pages.filter((page) => page.method === 'ocr');
+    if (pageNumbers.length <= MAX_RENDERED_EVIDENCE_PAGES) {
+      try {
+        visible.push(
+          ...((await this.textExtraction.readRenderedPages(documentId, pageNumbers)) ?? []),
+        );
+      } catch (error) {
+        // Unconfirmed evidence means review, never a failed job.
+        this.logger.warn(
+          `Could not render pages to confirm evidence: ${error instanceof Error ? error.message : 'unknown error'}`,
+        );
+      }
+    }
+    const fields = fieldsWithoutVisibleEvidence(documentType, assessment.fields, visible);
+    if (fields.length === 0) return assessment;
+    return {
+      ...assessment,
+      issues: [...assessment.issues, { code: 'evidence_not_visible', fields }],
     };
   }
 

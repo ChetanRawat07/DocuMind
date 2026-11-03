@@ -60,6 +60,13 @@ describe('DocumentProcessor', () => {
         extractions,
         new AuditLogsRepository(db),
         provider,
+        // Pages as drawn read exactly like their text layer here; the check is tested with the analysis.
+        {
+          readRenderedPages: async (id: string, pageNumbers: readonly number[]) =>
+            ((await texts.findForDocument(id))?.pages ?? [])
+              .filter((page) => pageNumbers.includes(page.pageNumber))
+              .map((page) => ({ ...page, method: 'ocr' as const, ocrConfidence: 0.97 })),
+        } as unknown as TextExtractionService,
       ),
       new AuditLogsRepository(db),
       new ReviewService(

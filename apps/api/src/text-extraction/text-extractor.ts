@@ -71,6 +71,27 @@ async function extractPdf(content: Buffer, ocr: OcrEngine): Promise<ExtractedPag
   }
 }
 
+/**
+ * OCR of the given PDF pages as rendered, ignoring their text layer: what a
+ * reader sees. A text layer can hold text that is never drawn visibly.
+ */
+export async function ocrPdfPages(
+  content: Buffer,
+  pageNumbers: readonly number[],
+  ocr: OcrEngine,
+): Promise<ExtractedPage[]> {
+  const pdf = await openPdf(content);
+  try {
+    const pages: ExtractedPage[] = [];
+    for (const pageNumber of pageNumbers) {
+      pages.push(ocrPage(pageNumber, await ocr.recognize(await pdf.renderPage(pageNumber))));
+    }
+    return pages;
+  } finally {
+    await pdf.close();
+  }
+}
+
 async function recognizeImage(content: Buffer, mimeType: string, ocr: OcrEngine) {
   const dimensions = imageDimensions(content, mimeType);
   if (!dimensions) {

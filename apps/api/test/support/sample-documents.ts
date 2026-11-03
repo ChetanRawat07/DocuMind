@@ -35,9 +35,13 @@ export function textImage(
   return format === 'png' ? canvas.toBuffer('image/png') : canvas.toBuffer('image/jpeg', 92);
 }
 
-/** A page of a sample PDF: typed text lines, or a scanned JPEG filling the page. */
+/**
+ * A page of a sample PDF: typed text lines, or a scanned JPEG filling the page.
+ * `hiddenLines` go into the text layer in invisible render mode (`3 Tr`):
+ * extracted with the text, never drawn.
+ */
 export type SamplePage =
-  | { readonly lines: readonly string[] }
+  | { readonly lines: readonly string[]; readonly hiddenLines?: readonly string[] }
   | { readonly scan: Buffer; readonly width: number; readonly height: number };
 
 /** A US Letter PDF, one page per entry. Encrypted (with an unknown password) on request. */
@@ -58,8 +62,11 @@ export function samplePdf(
     let resources = `<< /Font << /F1 ${font} 0 R >> >>`;
     let stream: string;
     if ('lines' in page) {
-      const shown = page.lines.map((line) => `(${escapePdfString(line)}) Tj T*`).join(' ');
-      stream = `BT /F1 20 Tf 26 TL 72 720 Td ${shown} ET`;
+      const show = (lines: readonly string[]) =>
+        lines.map((line) => `(${escapePdfString(line)}) Tj T*`).join(' ');
+      stream = `BT /F1 20 Tf 26 TL 72 720 Td ${show(page.lines)} ET`;
+      if (page.hiddenLines)
+        stream += ` BT 3 Tr /F1 20 Tf 26 TL 72 300 Td ${show(page.hiddenLines)} ET`;
     } else {
       const image = add(
         Buffer.concat([

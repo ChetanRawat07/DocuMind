@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { insertDocument, insertJob, insertUser } from '../../test/support/factories.js';
 import {
   classifiedAs,
@@ -14,19 +14,41 @@ import { AuditLogsRepository } from '../audit/audit-logs.repository.js';
 import type { DatabaseExecutor } from '../database/database.types.js';
 import { DocumentsRepository } from '../documents/documents.repository.js';
 import { DocumentTextsRepository } from '../text-extraction/document-texts.repository.js';
+import type { TextExtractionService } from '../text-extraction/text-extraction.service.js';
+import type { ExtractedPage } from '../text-extraction/text-extractor.js';
 import {
   DocumentAnalysisError,
   DocumentAnalysisService,
   type ExtractedAnalysis,
 } from './document-analysis.service.js';
 import { DocumentExtractionsRepository } from './document-extractions.repository.js';
+import { MAX_RENDERED_EVIDENCE_PAGES } from './visible-evidence.js';
+import { canSkipReview } from '../review/review-fields.js';
 
 describe('DocumentAnalysisService', () => {
   let db: DatabaseExecutor;
   let texts: DocumentTextsRepository;
   let documentId: string;
 
-  const serviceWith = (provider: AiProvider) =>
+  /** Rendering reads `drawn` per page, or by default exactly the stored text layer. */
+  const renderer = (drawn?: Readonly<Record<number, string>>) => {
+    const readRenderedPages = vi.fn(async (id: string, pageNumbers: readonly number[]) => {
+      const stored = (await texts.findForDocument(id))?.pages ?? [];
+      return pageNumbers.map((pageNumber): ExtractedPage => ({
+        pageNumber,
+        method: 'ocr',
+        text:
+          drawn?.[pageNumber] ?? stored.find((page) => page.pageNumber === pageNumber)?.text ?? '',
+        ocrConfidence: 0.97,
+      }));
+    });
+    return {
+      readRenderedPages,
+      service: { readRenderedPages } as unknown as TextExtractionService,
+    };
+  };
+
+  const serviceWith = (provider: AiProvider, rendering = renderer().service) =>
     new DocumentAnalysisService(
       db,
       new DocumentsRepository(db),
@@ -34,15 +56,33 @@ describe('DocumentAnalysisService', () => {
       new DocumentExtractionsRepository(db),
       new AuditLogsRepository(db),
       provider,
+      rendering,
     );
 
-  const storeText = (text: string) =>
+  const storeText = (
+    text: string | readonly string[],
+    method: 'text_layer' | 'ocr' = 'text_layer',
+  ) =>
     texts.replace({
       documentId,
-      pages: [{ pageNumber: 1, method: 'text_layer', text, ocrConfidence: null }],
+      pages: (typeof text === 'string' ? [text] : text).map((pageText, index) => ({
+        pageNumber: index + 1,
+        method,
+        text: pageText,
+        ocrConfidence: method === 'ocr' ? 0.99 : null,
+      })),
       durationMs: 5,
       engine: 'test',
     });
+
+  const analyzeWith = async (rendering: TextExtractionService, answer: unknown = PO_ANSWER) => {
+    const analysis = await serviceWith(
+      new ScriptedProvider(classifiedAs('purchase_order', 'PURCHASE ORDER'), answer),
+      rendering,
+    ).analyze(documentId);
+    if (analysis?.outcome !== 'extracted') throw new Error('expected an extraction');
+    return analysis;
+  };
 
   async function analyzePurchaseOrder(): Promise<ExtractedAnalysis> {
     await storeText(PO_TEXT);
@@ -96,6 +136,128 @@ describe('DocumentAnalysisService', () => {
       expect(extract?.user).toContain('- poNumber: Purchase order number');
       expect(extract?.user).toContain('<untrusted_document>\nPURCHASE ORDER');
       expect(extract?.jsonSchema).toMatchObject({ required: ['fields', 'lineItems'] });
+    });
+
+    describe('evidence a reader can see', () => {
+      it('confirms text-layer evidence on the rendered page before completing without review', async () => {
+        await storeText(PO_TEXT);
+        const { service, readRenderedPages } = renderer();
+
+        const analysis = await analyzeWith(service);
+
+        expect(readRenderedPages).toHaveBeenCalledWith(documentId, [1]);
+        expect(analysis.issues).toEqual([]);
+        expect(canSkipReview(analysis)).toBe(true);
+      });
+
+      it('flags values whose evidence is only in hidden text, keeping the values', async () => {
+        await storeText(PO_TEXT);
+        // As drawn, the page shows a different total than its text layer.
+        const drawn = PO_TEXT.replace('Total: 100.00 USD', 'Total: 1,200.00 USD');
+
+        const analysis = await analyzeWith(renderer({ 1: drawn }).service);
+
+        expect(analysis.issues).toEqual([
+          { code: 'evidence_not_visible', fields: ['currency', 'totalAmount'] },
+        ]);
+        expect(analysis.fields.totalAmount?.value).toBe(100);
+        expect(canSkipReview(analysis)).toBe(false);
+      });
+
+      it('renders only text-layer pages that hold evidence, trusting OCR pages as read', async () => {
+        const [heading = '', ...rest] = PO_TEXT.split('\n');
+        await texts.replace({
+          documentId,
+          pages: [
+            {
+              pageNumber: 1,
+              method: 'ocr',
+              text: [heading, ...rest.slice(0, 4)].join('\n'),
+              ocrConfidence: 0.99,
+            },
+            {
+              pageNumber: 2,
+              method: 'text_layer',
+              text: 'Terms and conditions',
+              ocrConfidence: null,
+            },
+            {
+              pageNumber: 3,
+              method: 'text_layer',
+              text: rest.slice(4).join('\n'),
+              ocrConfidence: null,
+            },
+          ],
+          durationMs: 5,
+          engine: 'test',
+        });
+        const { service, readRenderedPages } = renderer();
+
+        expect((await analyzeWith(service)).issues).toEqual([]);
+        expect(readRenderedPages).toHaveBeenCalledWith(documentId, [3]);
+      });
+
+      it('renders nothing when every page was read with OCR', async () => {
+        await storeText(PO_TEXT, 'ocr');
+        const { service, readRenderedPages } = renderer();
+
+        await analyzeWith(service);
+
+        expect(readRenderedPages).not.toHaveBeenCalled();
+      });
+
+      it('renders nothing for an extraction that goes to review anyway', async () => {
+        await storeText(PO_TEXT);
+        const { service, readRenderedPages } = renderer();
+        const answer = {
+          ...PO_ANSWER,
+          fields: { ...PO_ANSWER.fields, buyerName: field('Initech', 'Buyer: Initech') },
+        };
+
+        await analyzeWith(service, answer);
+
+        expect(readRenderedPages).not.toHaveBeenCalled();
+      });
+
+      it(`sends evidence spread over more than ${String(MAX_RENDERED_EVIDENCE_PAGES)} pages to review without rendering`, async () => {
+        const lines = PO_TEXT.split('\n');
+        await storeText(
+          [lines.slice(0, 2), lines.slice(2, 3), lines.slice(3, 4), lines.slice(4)].map((page) =>
+            page.join('\n'),
+          ),
+        );
+        const { service, readRenderedPages } = renderer();
+
+        const analysis = await analyzeWith(service);
+
+        expect(readRenderedPages).not.toHaveBeenCalled();
+        expect(analysis.issues).toEqual([
+          {
+            code: 'evidence_not_visible',
+            fields: [
+              'poNumber',
+              'buyerName',
+              'supplierName',
+              'orderDate',
+              'currency',
+              'totalAmount',
+              'lineItems',
+            ],
+          },
+        ]);
+      });
+
+      it('sends the document to review when the pages cannot be rendered', async () => {
+        await storeText(PO_TEXT);
+        const failing = {
+          readRenderedPages: vi.fn().mockRejectedValue(new Error('storage unavailable')),
+        } as unknown as TextExtractionService;
+
+        const analysis = await analyzeWith(failing);
+
+        expect(analysis.issues[0]?.code).toBe('evidence_not_visible');
+        expect(canSkipReview(analysis)).toBe(false);
+      });
     });
 
     it('stops after classification for an unsupported document', async () => {

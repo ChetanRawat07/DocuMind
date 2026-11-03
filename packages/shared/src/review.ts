@@ -13,6 +13,7 @@ export const VALIDATION_ISSUE_CODES = [
   'missing_required_field',
   'evidence_not_found',
   'value_not_in_evidence',
+  'evidence_not_visible',
   'date_order',
   'totals_mismatch',
   'line_items_total_mismatch',

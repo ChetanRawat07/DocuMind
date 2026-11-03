@@ -9,7 +9,7 @@ import { ObjectStorage } from '../storage/object-storage.js';
 import { DocumentTextsRepository } from './document-texts.repository.js';
 import { OCR_ENGINE_NAME, OcrEngine } from './ocr-engine.js';
 import { pdfjsVersion } from './pdf-document.js';
-import { extractText } from './text-extractor.js';
+import { type ExtractedPage, extractText, ocrPdfPages } from './text-extractor.js';
 
 export const TEXT_ENGINE = `pdf.js ${pdfjsVersion}; ${OCR_ENGINE_NAME}`;
 
@@ -91,5 +91,25 @@ export class TextExtractionService {
       throw error;
     }
     return summary;
+  }
+
+  /**
+   * OCR of the given pages of a stored PDF as they are drawn, for checking
+   * that text-layer evidence is visible. Returns null when the document no
+   * longer exists.
+   */
+  async readRenderedPages(
+    documentId: string,
+    pageNumbers: readonly number[],
+  ): Promise<ExtractedPage[] | null> {
+    const document = await this.documents.findByIdForProcessing(documentId);
+    if (!document) return null;
+    const content = await buffer((await this.storage.get(document.storageKey)).body);
+    const ocr = new OcrEngine();
+    try {
+      return await ocrPdfPages(content, pageNumbers, ocr);
+    } finally {
+      await ocr.terminate();
+    }
   }
 }

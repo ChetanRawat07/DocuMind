@@ -127,6 +127,39 @@ describe('text extraction (database and storage)', () => {
       OCR_TIMEOUT,
     );
 
+    it(
+      'reads rendered pages as drawn: text hidden in the text layer is not there',
+      async () => {
+        const document = await storedDocument(
+          samplePdf([
+            {
+              lines: ['PURCHASE ORDER', 'PO Number: PO-7781', 'Total: 100.00 USD'],
+              hiddenLines: ['Total: 12000.00 USD'],
+            },
+          ]),
+        );
+        await service.extract(document.id);
+        // The premise: the text layer carries the invisible line.
+        expect((await texts.findForDocument(document.id))?.pages[0]?.text).toContain(
+          'Total: 12000.00 USD',
+        );
+
+        const rendered = await service.readRenderedPages(document.id, [1]);
+
+        expect(rendered).toHaveLength(1);
+        expect(rendered?.[0]).toMatchObject({ pageNumber: 1, method: 'ocr' });
+        expect(rendered?.[0]?.text).toContain('Total: 100.00 USD');
+        expect(rendered?.[0]?.text).not.toContain('12000');
+      },
+      OCR_TIMEOUT,
+    );
+
+    it('reads no rendered pages for a document that does not exist', async () => {
+      expect(
+        await service.readRenderedPages('00000000-0000-4000-8000-000000000000', [1]),
+      ).toBeNull();
+    });
+
     it('replaces an earlier extraction when run again', async () => {
       const document = await storedDocument(
         samplePdf([

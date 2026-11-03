@@ -35,6 +35,7 @@ export const ISSUE_LABEL: Record<ValidationIssueCode, string> = {
   missing_required_field: 'Required, but not found',
   evidence_not_found: 'The quoted text is not in the document',
   value_not_in_evidence: 'The quoted text does not show this value',
+  evidence_not_visible: 'The quoted text could not be confirmed on the page as printed',
   date_order: 'The dates are in the wrong order',
   totals_mismatch: 'Subtotal and tax do not add up to the total',
   line_items_total_mismatch: 'The line items do not add up',
