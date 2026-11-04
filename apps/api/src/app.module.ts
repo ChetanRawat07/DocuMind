@@ -11,11 +11,14 @@ import { ProcessingHttpModule } from './processing/processing-http.module.js';
 import { ReviewHttpModule } from './review/review-http.module.js';
 import { SHARED_FEATURE_MODULES } from './shared-feature-modules.js';
 import { UsersHttpModule } from './users/users-http.module.js';
+import { DocumentProcessor } from './worker/document-processor.js';
+import { WorkerService } from './worker/worker.service.js';
 
 /**
  * Root module of the HTTP API process: shared feature modules plus HTTP-facing
  * modules. AuthModule registers a global guard, so every route requires
- * authentication unless marked @Public().
+ * authentication unless marked @Public(). With WORKER_IN_PROCESS the process
+ * also runs the worker's poll loop (the free demo host, ADR-009).
  */
 @Module({})
 export class AppModule {
@@ -35,6 +38,7 @@ export class AppModule {
         AuditHttpModule,
         AnalyticsHttpModule,
       ],
+      providers: config.worker.inProcess ? [DocumentProcessor, WorkerService] : [],
     };
   }
 }

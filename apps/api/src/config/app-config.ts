@@ -68,6 +68,8 @@ const envSchema = z.object({
       ),
     ),
   WORKER_POLL_INTERVAL_MS: z.coerce.number().int().min(100).max(60_000).default(5000),
+  // The free demo host has no background workers, so the API process also runs the poll loop (ADR-009).
+  WORKER_IN_PROCESS: z.stringbool().default(false),
   DATABASE_URL: z.string().refine(isPostgresUrl, {
     message: 'Must be a postgres:// or postgresql:// URL including host and database name',
   }),
@@ -167,6 +169,8 @@ export interface AppConfig {
   };
   readonly worker: {
     readonly pollIntervalMs: number;
+    /** The API process also runs the job poll loop, instead of a separate worker process. */
+    readonly inProcess: boolean;
   };
   readonly database: {
     /** Contains credentials: never log it. */
@@ -217,7 +221,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
     nodeEnv: parsed.NODE_ENV,
     log: { level: parsed.LOG_LEVEL, format: parsed.LOG_FORMAT },
     http: { port: parsed.PORT, corsAllowedOrigins: parsed.CORS_ALLOWED_ORIGINS },
-    worker: { pollIntervalMs: parsed.WORKER_POLL_INTERVAL_MS },
+    worker: { pollIntervalMs: parsed.WORKER_POLL_INTERVAL_MS, inProcess: parsed.WORKER_IN_PROCESS },
     database: {
       url: parsed.DATABASE_URL,
       poolMax: parsed.DATABASE_POOL_MAX,

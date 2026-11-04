@@ -12,7 +12,7 @@ describe('loadConfig', () => {
       nodeEnv: 'development',
       log: { level: 'log', format: 'json' },
       http: { port: 3000, corsAllowedOrigins: [] },
-      worker: { pollIntervalMs: 5000 },
+      worker: { pollIntervalMs: 5000, inProcess: false },
       database: { url: DATABASE_URL, poolMax: 10, statementTimeoutMs: 30_000 },
       auth: {
         issuer: 'https://abcdefghijklmnopqrst.supabase.co/auth/v1',
@@ -35,6 +35,7 @@ describe('loadConfig', () => {
       PORT: '8080',
       CORS_ALLOWED_ORIGINS: ' https://documind.pages.dev , http://localhost:5173 ',
       WORKER_POLL_INTERVAL_MS: '250',
+      WORKER_IN_PROCESS: 'true',
     });
 
     expect(config.http.port).toBe(8080);
@@ -42,7 +43,7 @@ describe('loadConfig', () => {
       'https://documind.pages.dev',
       'http://localhost:5173',
     ]);
-    expect(config.worker.pollIntervalMs).toBe(250);
+    expect(config.worker).toEqual({ pollIntervalMs: 250, inProcess: true });
   });
 
   it.each([
@@ -53,6 +54,7 @@ describe('loadConfig', () => {
     ['WORKER_POLL_INTERVAL_MS', '10'],
     ['DATABASE_POOL_MAX', '0'],
     ['DATABASE_STATEMENT_TIMEOUT_MS', '500'],
+    ['WORKER_IN_PROCESS', 'maybe'],
   ])('rejects %s=%s', (name, value) => {
     expect(() => loadConfig({ ...REQUIRED, [name]: value })).toThrow(ConfigValidationError);
   });
