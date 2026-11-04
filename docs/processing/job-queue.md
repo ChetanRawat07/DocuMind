@@ -114,7 +114,9 @@ RETURNING *;
   extraction returns null, or the fenced writes match nothing, and the worker moves on.
 - **…how does it scale?** Run more worker processes: `SKIP LOCKED` spreads jobs between them with
   no coordination. The limits are database connections, AI throughput and OCR CPU. At very high job
-  rates the polling queries would need `LISTEN/NOTIFY` or a dedicated broker (Phase 15).
+  rates the polling queries would need `LISTEN/NOTIFY` or a dedicated broker. The
+  [performance review](../operations/performance-review.md) measured 1,625 jobs a second with 16
+  workers, against 1.2 a second needed for 100,000 documents a day.
 
 ## Operating it
 

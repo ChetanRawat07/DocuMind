@@ -38,6 +38,11 @@ npm audit
 - **Schema changes** happen only through migrations; follow the workflow in
   [docs/database/schema.md](docs/database/schema.md#migration-workflow). Never edit a migration that
   has run anywhere other than your machine; add a new one. Commit regenerated row types with it.
+  Migrations must be backward compatible: production migrates while the previous version is still
+  serving ([deployment](docs/operations/deployment.md#releases-and-migrations)).
+- **API changes** start in the shared Zod schemas (`packages/shared`). Update
+  [docs/api](docs/api/README.md) and the README's endpoint table in the same pull request, and keep
+  old fields working for one release: the web app and the API deploy separately.
 - **Database access** goes through repositories. Reads and deletes of user-owned data filter by
   owner id in SQL.
 - **Authentication** is on by default for every route. `@Public()` needs a reason in a comment and
@@ -65,4 +70,5 @@ npm audit
   and keyboard support; keep `a11y.spec.tsx` passing.
 - **Dependencies:** add one only with a clear reason; check `npm audit` afterwards. Install scripts
   are reviewed via `npm install-scripts ls`.
-- **Architecture changes** that affect other phases get an ADR in `docs/adr/`.
+- **Significant decisions** (a new dependency with a lasting cost, a new service, a change of
+  approach) get an ADR in `docs/adr/`, using `docs/adr/template.md`.

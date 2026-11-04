@@ -4,8 +4,8 @@ An ADR records one significant decision: the context, what was decided, the alte
 consequences. ADRs are immutable once accepted; a changed decision gets a new ADR that supersedes
 the old one.
 
-Numbers follow the development plan so each record traces back to it. Gaps are decisions the plan
-schedules for later phases.
+ADR-001 to ADR-010 are the decisions the development plan named up front. Later numbers follow the
+order in which decisions were made; "Decided in" names the phase.
 
 | ADR                                                   | Title                                           | Status   | Decided in |
 | ----------------------------------------------------- | ----------------------------------------------- | -------- | ---------- |

@@ -116,8 +116,8 @@ disconnects, the storage stream is destroyed.
 
 ## Known limitations
 
-- Substring search has no index (see above), and only filenames are searched. Searching document
-  content needs text extraction (Phase 6).
+- Substring search has no index (see above), and only filenames are searched. The extracted text is
+  stored per page (`document_texts`) but not searchable yet; that would need a full-text index.
 - No total count of matches: paging is "load more".
 - File reads count toward the per-user limit of 300 requests per minute (Phase 13).
 - In development, React StrictMode runs effects twice, so one preview can record two

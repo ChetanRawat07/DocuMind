@@ -324,6 +324,8 @@ decision updates only `WHERE decision IS NULL`.
 
 **Queries.** A document's pages in order use the primary key `(document_id, page_number)`.
 
+### audit_logs
+
 **Why it exists.** An append-only record of security-relevant and user-visible actions (Phase 11).
 
 **Design.**

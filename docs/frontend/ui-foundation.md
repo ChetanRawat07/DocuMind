@@ -44,9 +44,8 @@ WCAG AA contrast (4.5:1) on white.
   while it can't, and then provides it to pages through `useCurrentUser()`.
 - From the `lg` breakpoint (1024px) the sidebar is fixed. Below it, the top bar's menu button opens
   the same navigation in a drawer (`layout/mobile-nav.tsx`).
-- Pages that later phases build (Processing, Review, Analytics, Audit Logs) render
-  `ComingSoonPage`, which says plainly that the section is not available yet. Documents and the
-  document detail page (`/documents/:id`, breadcrumb "Documents › Details") are described in
+- Every navigation entry is a real page: Dashboard, Documents, Processing, Review, Analytics,
+  Audit Logs and Settings, plus a 404. Documents and the document detail page (`/documents/:id`, breadcrumb "Documents › Details") are described in
   [document-management.md](../documents/document-management.md).
 
 ## Component kit (`apps/web/src/components/ui`)
@@ -84,8 +83,8 @@ const recent = useApiQuery('/documents?limit=5', documentListResponseSchema);
   once, and a late response for an old request is never shown. Leaving the page aborts the request.
 - Error messages are fixed text ("Could not load documents"). Server error messages are never
   rendered.
-- **No invented numbers.** Until an API provides a metric, its card shows "—" / "No data yet". The
-  dashboard's KPIs, activity chart and type breakdown stay in this state until analytics (Phase 12).
+- **No invented numbers.** A metric the API has no value for shows "—" ("No data yet" for screen
+  readers), never a zero or a placeholder figure.
 
 ## Accessibility
 
@@ -104,7 +103,8 @@ const recent = useApiQuery('/documents?limit=5', documentListResponseSchema);
 | One `h1` per page; cards use `h2`                                                                                  | `PageHeader`, `CardHeader`           |
 
 **How it is checked:** `apps/web/src/a11y.spec.tsx` runs axe-core on every screen (auth pages,
-dashboard, settings, a placeholder page, 404, and with the drawer and account menu open). jsdom
+dashboard, documents, document detail with a review, processing, review queue, analytics, audit
+logs, settings, 404, and with the drawer and account menu open). jsdom
 cannot compute color contrast, so contrast was checked by running axe in headless Chrome against
 the rendered app during Phase 3 (no violations). Automated checks find a subset of problems; a
 manual screen-reader pass is still worth doing before a demo.

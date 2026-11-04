@@ -1,39 +1,29 @@
 # Architecture overview
 
-This document describes the architecture **as implemented** and marks planned parts explicitly.
+This document describes the architecture **as implemented**.
 Decisions and their reasoning live in [the ADRs](../adr/README.md).
 
-## Current state: Phase 16 (deployment and CI/CD)
+## What exists
 
-Implemented: repository structure, the API process with liveness and readiness endpoints, the
-worker process skeleton, shared contracts, configuration validation, the PostgreSQL schema with
-migrations, repositories for every table, a development seed, Supabase Auth integration (sign-up,
-sign-in, sign-out, password reset in the web app; token verification, a global auth guard and user
-provisioning in the API), read-only document endpoints with ownership enforcement, the web app's product shell and component
-kit (dashboard, settings, placeholder pages for later sections), and unit, integration, component
-and accessibility tests, and document upload/delete with content validation and private object
-storage (filesystem adapter locally, S3-compatible adapter for R2), and document management
-(search, filters, keyset-paged sorting, detail page, audited view and download streamed through the
-API), and text extraction (pdf.js text layer, tesseract.js OCR for scanned pages, stored per page;
-stored per page), and the AI provider layer (Ollama locally, Cloudflare Workers AI in the
-demo, chosen by configuration), and document classification and structured extraction with
-evidence-based confidence, and the job queue: upload enqueues a job, and the worker claims it,
-runs text extraction and AI extraction, and retries, dead-letters or recovers it after a crash,
-and the review workflow: confident extractions complete on their own, the rest are reviewed field
-by field, then approved or rejected, and observability: request ids that follow a request into its
-job, the worker and the AI calls; structured JSON logs; step timings on each job; the Processing
-and Audit Logs screens and a per-document activity timeline, and analytics: processing, review
-and correction rates over 7, 30 or 90 days in the viewer's timezone, from bounded, indexed queries,
-and security hardening: per-user rate limits and a daily processing quota, data erasure, an
-orphaned-file sweep, a Content-Security-Policy for the web app, and an OCR check of text-layer
-evidence before automatic completion ([security review](../security/security-review.md)), and a
-test suite checked for gaps with coverage thresholds and mutation testing
-([testing strategy](../testing/testing-strategy.md)), and a performance review at 1 million
-documents that fixed the job queries, OCR memory for large photos and JIT overhead
-([performance review](../operations/performance-review.md)), and a deployment pipeline: GitHub
-Actions checks every change and starts the production Docker image; Render deploys the API (with
-the worker in its process) and Cloudflare Pages the web app, only after the checks pass
-([deployment](../operations/deployment.md)).
+All planned features are implemented, tested and deployable (Phases 0–16 of the development plan):
+
+- **Two processes, one codebase:** the HTTP API and the worker. They share feature modules and
+  repositories, each with its own connection pool. On the free host the worker runs inside the API
+  process.
+- **Data:** a PostgreSQL schema with SQL migrations, ownership enforced in every query and by
+  composite foreign keys, generated row types and a development seed.
+- **Identity:** Supabase Auth in the web app (sign-up, sign-in, password reset), and token
+  verification against JWKS with user provisioning in the API.
+- **Documents:** byte-checked uploads into private object storage (a local folder or R2); search,
+  filters and keyset-paged sorting; preview and download streamed through the API and audited;
+  deletion and full erasure.
+- **Processing:** a PostgreSQL job queue with leases, retries, backoff, a dead letter and fenced
+  writes. Text comes from the pdf.js text layer or tesseract.js OCR. An AI provider layer (Ollama or
+  Workers AI) does classification and structured extraction, with evidence-based confidence.
+- **Review:** confident extractions complete on their own, and the rest are reviewed field by field.
+- **Operations:** request ids end to end, JSON logs, step timings, Processing, Audit Logs and
+  Analytics screens, rate limits and a quota, a security review, a performance review at 1 million
+  documents, and CI/CD to Render and Cloudflare Pages.
 
 - Schema, constraints and indexes: [database/schema.md](../database/schema.md)
 - Deployment, CI and free-tier limits: [operations/deployment.md](../operations/deployment.md)
@@ -73,14 +63,13 @@ the worker in its process) and Cloudflare Pages the web app, only after the chec
                                        ▼
                          ┌──────────────────────────┐
                          │ PostgreSQL 17            │  system of record + job queue
-                         │ (Docker locally;         │  (schema: Phase 1, queue logic: Phase 9)
+                         │ (Docker locally;         │
                          │  Supabase in demo)       │
                          └──────────────────────────┘
 
-  Object storage (ObjectStorage adapter): local folder in development, Cloudflare R2 in the demo;
-  only the API touches it, the browser never does.
-  Planned: Tesseract OCR (Phase 6) ·
-           Ollama / Cloudflare Workers AI behind an AI provider interface (Phase 7)
+  Object storage (ObjectStorage adapter): local folder in development, Cloudflare R2 in the demo.
+  Only the API and the worker touch it; the browser never does.
+  The worker also calls the AI provider: Ollama locally, Cloudflare Workers AI in the demo.
 ```
 
 In the zero-cost demo deployment the worker runs inside the API's process (`WORKER_IN_PROCESS=true`,
@@ -90,37 +79,44 @@ ADR-009, ADR-021). The code keeps the two separate, so either topology works.
 
 ```text
 apps/api/src
-├── main.ts                  HTTP entrypoint
-├── worker.ts                Worker entrypoint
+├── main.ts                  HTTP entrypoint (AppModule)
+├── worker.ts                Worker entrypoint (WorkerModule)
 ├── app.module.ts            Root module for HTTP: shared feature modules + HTTP-facing modules
-├── auth/                    HTTP-only: token verifier, global AuthGuard, @Public(), @CurrentUser(),
-│                            user provisioning
 ├── shared-feature-modules.ts  Feature modules imported by both root modules
 ├── config/                  Environment schema (Zod) and the global APP_CONFIG provider
-├── database/                Kysely instance (DATABASE provider), migrations, migrate/seed CLIs,
-│                            generated row types
-├── users/ documents/ jobs/ extraction/ audit/
+├── database/                Kysely instance, migrations, migrate/seed CLIs, generated row types
+├── auth/                    HTTP-only: token verifier, global AuthGuard, rate limits, @Public(),
+│                            @CurrentUser(), user provisioning
+├── users/ documents/ jobs/ audit/ review/ processing/ analytics/
 │                            Feature modules; each holds its repository. `*-http.module.ts`
 │                            files hold controllers and are imported by AppModule only
+├── storage/                 ObjectStorage port; filesystem and S3 (R2) adapters; orphan sweep
+├── text-extraction/         pdf.js text layer, page rendering, tesseract.js OCR, normalization
+├── ai/                      AI provider interface, Ollama and Workers AI providers, prompts
+├── extraction/              Classification, field extraction, validation, evidence scoring
+├── worker/                  Worker-only: DocumentProcessor, failure classification, PollingLoop
+├── cli/                     Developer tools: ai-check, extract-text, analyze-document, sweep-storage
 ├── common/                  Cross-cutting code usable by both processes
 │   ├── bootstrap/           Startup failure handling
-│   ├── filters/             HTTP exception → shared error envelope
-│   ├── pipes/               Zod validation pipe for request input
-│   └── logging/             Logger factory (JSON or pretty)
-├── http/                    HTTP-only setup: helmet, CORS, prefix, filters, 404 handling
-├── health/                  Liveness and readiness endpoints
-└── worker/                  Worker-only: WorkerModule, WorkerService, PollingLoop
+│   ├── correlation/         Request and job ids (AsyncLocalStorage)
+│   ├── filters/             Exception → shared error envelope
+│   ├── logging/             Logger factory (JSON or pretty), key redaction
+│   └── pipes/               Zod validation pipe for request input
+├── http/                    HTTP-only setup: correlation, helmet, CORS, prefix, 404 handling
+└── health/                  Liveness and readiness endpoints
+apps/api/test                HTTP and database tests across modules; support/ (factories, fakes)
 
 apps/web/src
-├── auth/                    Supabase client, AuthProvider, useAuth, RequireAuth, safe redirects,
-│                            current-user context
+├── auth/                    Supabase client, AuthProvider, RequireAuth, safe redirects
 ├── layout/                  App shell, sidebar, mobile drawer, top bar, account menu, nav config
-├── pages/                   Auth pages, dashboard, settings, coming-soon and not-found pages
+├── pages/                   One file per route: auth pages, dashboard, documents, document
+│                            detail, processing, review, analytics, audit logs, settings, 404
 ├── components/ui/           Component kit: button, card, page header, badges, charts, states
-├── components/documents/    Document table
-├── lib/                     Formatting, labels and small pure helpers
+├── components/documents/ review/ analytics/ settings/
+│                            Feature components
+├── lib/                     Formatting, labels, CSP, API origin and small pure helpers
 ├── services/                API client (bearer token, refresh-once-on-401), useApiQuery, health
-└── test/                    Fake auth client and app render helpers
+└── test/                    Fake auth client, fake XHR and app render helpers
 packages/shared/src          Zod schemas + types shared by API and web
 ```
 
@@ -175,9 +171,8 @@ logged server-side only.
 
 `PollingLoop` calls `tick()`. If the tick reports work was found, it polls again immediately;
 otherwise, or after an error, it waits `WORKER_POLL_INTERVAL_MS`. Ticks never overlap. On shutdown
-the idle wait is interrupted at once, but an in-flight tick is allowed to finish. In Phase 0 the
-tick did nothing; since Phase 9 it releases expired leases, then claims and processes one job
-([job queue](../processing/job-queue.md)).
+the idle wait is interrupted at once, but an in-flight tick is allowed to finish. Each tick releases
+expired leases, then claims and processes one job ([job queue](../processing/job-queue.md)).
 
 ## API conventions (established)
 
@@ -187,7 +182,8 @@ tick did nothing; since Phase 9 it releases expired leases, then claims and proc
 - Authentication: `Authorization: Bearer <Supabase access token>`; 401 with `WWW-Authenticate` when
   missing or invalid, 503 when signing keys cannot be fetched.
 - Another user's resource and a nonexistent one both return 404 with the same body.
-- Lists use keyset pagination with an opaque `cursor` and `limit` (default 20, max 100).
+- Lists use keyset pagination with an opaque `cursor` and `limit` (max 100).
+- The full reference: [docs/api](../api/README.md).
 
 ## Configuration
 
