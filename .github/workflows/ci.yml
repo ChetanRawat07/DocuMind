@@ -1,0 +1,161 @@
+# CI for every pull request and push to main; deploys the web app from main
+# (docs/operations/deployment.md). Render deploys the API itself once these
+# checks pass (render.yaml: autoDeployTrigger checksPass).
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Same version as the Dockerfile's base image.
+  NODE_VERSION: 24.22.1
+
+jobs:
+  check:
+    name: Lint, types, tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        # The local development values from .env.example; this database exists only in CI.
+        env:
+          POSTGRES_USER: documind
+          POSTGRES_PASSWORD: documind_local_dev_only
+          POSTGRES_DB: documind
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U documind -d documind"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      # The scripts read the repository's .env; the example's values match the service above.
+      - run: cp .env.example .env
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run db:migrate
+      - name: Generated database types match the migrations
+        run: npm run db:codegen:check
+      - run: npm run test:coverage
+      - run: npm run build
+      - name: No known high-severity vulnerabilities in runtime dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+  image:
+    name: API image starts and migrates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: documind
+          POSTGRES_PASSWORD: ci_only
+          POSTGRES_DB: documind
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U documind -d documind"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: docker build -t documind-api .
+      # Production configuration with placeholder credentials: startup contacts only the database.
+      - name: Start the image with production settings and the free instance's limits
+        run: |
+          docker run -d --name api --network host --memory 512m --cpus 0.5 \
+            -e NODE_ENV=production -e PORT=3000 -e WORKER_IN_PROCESS=true \
+            -e DATABASE_URL=postgres://documind:ci_only@127.0.0.1:5432/documind \
+            -e SUPABASE_URL=https://abcdefghijklmnopqrst.supabase.co \
+            -e CORS_ALLOWED_ORIGINS=https://documind.pages.dev \
+            -e STORAGE_DRIVER=s3 -e S3_ENDPOINT=https://example.r2.cloudflarestorage.com \
+            -e S3_BUCKET=documind-documents -e S3_ACCESS_KEY_ID=ci -e S3_SECRET_ACCESS_KEY=ci \
+            -e AI_PROVIDER=cloudflare -e CLOUDFLARE_ACCOUNT_ID=0123456789abcdef0123456789abcdef \
+            -e CLOUDFLARE_AI_API_TOKEN=ci \
+            documind-api
+      - name: Ready within two minutes
+        run: |
+          for _ in $(seq 1 60); do
+            body=$(curl -sf http://127.0.0.1:3000/api/v1/health/ready || true)
+            grep -q '"status":"ok"' <<<"$body" && exit 0
+            sleep 2
+          done
+          docker logs api
+          exit 1
+      - name: Migrations ran, JIT is off for the role, and CORS admits only the web origin
+        run: |
+          # Output is captured before grep: grep -q can exit early, failing the pipe under pipefail.
+          logs=$(docker logs api 2>&1)
+          grep -q '^Success: Up ' <<<"$logs"
+          test "$(docker exec api node -e "
+            const { Client } = require('pg');
+            const c = new Client(process.env.DATABASE_URL);
+            c.connect().then(() => c.query('SHOW jit')).then((r) => { console.log(r.rows[0].jit); return c.end(); });
+          ")" = off
+          preflight() {
+            curl -s -o /dev/null -D - -X OPTIONS http://127.0.0.1:3000/api/v1/me \
+              -H "Origin: $1" -H 'Access-Control-Request-Method: GET'
+          }
+          allowed=$(preflight https://documind.pages.dev)
+          grep -qi '^access-control-allow-origin: https://documind.pages.dev' <<<"$allowed"
+          foreign=$(preflight https://evil.example)
+          if grep -qi '^access-control-allow-origin' <<<"$foreign"; then
+            echo 'A foreign origin was allowed'
+            exit 1
+          fi
+      - name: Stops cleanly on SIGTERM
+        run: |
+          docker stop --time 30 api
+          test "$(docker inspect -f '{{.State.ExitCode}}' api)" = 0
+
+  deploy-web:
+    name: Deploy web app to Cloudflare Pages
+    needs: [check, image]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: production
+    concurrency:
+      group: deploy-web
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci --workspace @documind/shared --workspace @documind/web --include-workspace-root
+      # Public values only (repository variables, not secrets): they are bundled into the app.
+      # An unset variable would otherwise build an app that cannot reach the API or sign in.
+      - run: |
+          : "${VITE_SUPABASE_URL:?Set the VITE_SUPABASE_URL repository variable}"
+          : "${VITE_SUPABASE_PUBLISHABLE_KEY:?Set the VITE_SUPABASE_PUBLISHABLE_KEY repository variable}"
+          : "${VITE_API_URL:?Set the VITE_API_URL repository variable}"
+          npm run build -w @documind/shared && npm run build -w @documind/web
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+      - name: Upload to Cloudflare Pages
+        run: >-
+          npx --yes wrangler@4.151.3 pages deploy apps/web/dist
+          --project-name "$PAGES_PROJECT" --branch main --commit-hash "$GITHUB_SHA"
+        env:
+          # Token scoped to "Cloudflare Pages: Edit" on this account only.
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          PAGES_PROJECT: ${{ vars.CLOUDFLARE_PAGES_PROJECT }}
