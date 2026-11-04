@@ -1,190 +1,238 @@
 # DocuMind
 
-An AI document intelligence platform: upload invoices, contracts and purchase orders; DocuMind
-extracts text (with OCR for scans), classifies the document, extracts structured fields with an
-LLM, validates them against schemas and flags low-confidence results for human review.
+An AI document intelligence platform. Upload an invoice, purchase order or contract: DocuMind reads
+its text (with OCR for scans), classifies it, extracts structured fields with an LLM, checks them
+against business rules and the document's own text, and sends anything it is unsure about to a
+person for review.
 
 > **Portfolio/demo project.** Do not upload real confidential, medical, legal, financial or
-> otherwise sensitive documents. Use synthetic documents. DocuMind makes no compliance claims
-> (SOC 2, ISO 27001, HIPAA, GDPR) and has not been independently security-tested.
+> otherwise sensitive documents. Use synthetic documents. Document text is sent to the configured
+> AI provider. DocuMind makes no compliance claims (SOC 2, ISO 27001, HIPAA, GDPR) and has not been
+> independently security-tested.
 
-## Status
+**Contents:** [Features](#features) · [Architecture](#architecture) · [Tech stack](#tech-stack) ·
+[Local setup](#local-setup) · [Environment variables](#environment-variables) ·
+[Security model](#security-model) · [API](#api) · [Deployment](#deployment) ·
+[Free-tier constraints](#free-tier-constraints) · [Limitations](#limitations) ·
+[Troubleshooting](#troubleshooting) · [Documentation](#documentation)
 
-Built in phases (see `DocuMind_Interview_Ready_Development_Plan.md`).
-**Phases 0 (foundation), 1 (database and data model), 2 (authentication and authorization), 3
-(UI foundation), 4 (document upload and object storage), 5 (document management), 6 (text
-extraction and OCR), 7 (AI provider abstraction), 8 (document classification and structured
-extraction) and 9 (asynchronous queue and workers) are complete.** The following exist today:
+## Features
 
-- NestJS API process with liveness and readiness endpoints, security headers, CORS allow-list and
-  a consistent error format.
-- PostgreSQL schema (users, documents, processing jobs, extractions, audit logs) with migrations,
-  constraints that enforce ownership, idempotency and job-state invariants, generated row types,
-  repositories, a development seed and database integration tests.
-- Authentication with Supabase Auth: sign-up, sign-in, sign-out and password reset in the web app;
-  every API route requires a verified access token unless explicitly public; users are provisioned
-  on first request; document endpoints enforce ownership (another user's document is a 404).
-- Worker process with a graceful-shutdown poll loop that processes queued jobs (see below).
-- Shared Zod contracts used by both API and web.
-- React + Vite + Tailwind web app with the product shell: sidebar (a drawer on phones), top bar
-  with breadcrumb and account menu, a dashboard (recent documents from the API; metrics show
-  "No data yet" until analytics exists), settings, styled auth pages, and placeholder pages for
-  sections built in later phases. A small component kit covers cards, status badges, and loading,
-  empty and error states, with automated accessibility tests.
-- Local PostgreSQL via Docker Compose, validated configuration, linting, formatting and tests.
-
-- Document upload: drag-and-drop or file picker with a queue and per-file progress; the API checks
-  size, filename, extension and the file's actual bytes (PDF, PNG, JPEG up to 10 MB) before storing
-  it privately under a generated key (local folder in development, Cloudflare R2 in the demo).
-  Documents can be listed and deleted (row and file).
-- Document management: search by filename, filters (status, type, format), six sort orders with
-  keyset pagination, the view kept in the URL, a detail page with metadata, inline preview (PDF and
-  images) and download. Files are streamed through the API to their owner only, and every view or
-  download is recorded in the audit log.
-
-- Text extraction: each PDF page's text layer is used where it has content; scanned pages and
-  images are read with OCR (Tesseract as WebAssembly, English, fully offline). Text is normalized
-  and stored per page with its method and OCR confidence.
-
-- AI provider layer: one interface with an Ollama provider (local, Docker) and a Cloudflare
-  Workers AI provider (demo), chosen by configuration. Requests have a timeout, failures are
-  normalized and classified as retryable or permanent, prompts are versioned templates, and
-  structured answers are constrained to a JSON Schema and validated with Zod.
-  `npm run ai:check` tests the configured provider.
-
-- Document classification and structured extraction: the model classifies a document as an
-  invoice, purchase order or contract (or unsupported), then extracts that type's fields with a
-  supporting quote for each. Answers are validated with Zod, checked with business rules (dates,
-  totals, line items) and scored per field from evidence: is the quote really in the document,
-  does it show the value, how good was the OCR. Results are stored per processing job with their
-  issues and prompt versions.
-
-- Asynchronous processing: upload queues a job in the same transaction; the worker claims it
-  (`FOR UPDATE SKIP LOCKED`, safe with several workers), extracts text, then classifies and extracts
-  fields. Failures are classified as retryable or permanent;
-  retries back off exponentially with jitter, up to three attempts, and permanent failures end in a
-  dead letter that users can retry. A crashed worker's job is taken over when its lease expires,
-  and stale workers' writes are fenced out. The job history is available per document.
-
-- Review workflow: confident extractions (overall ≥ 0.90, no issues) complete on their own; the
-  rest wait in a review queue. On the document page each flagged field shows why and the quoted
-  passage, and is confirmed or corrected; approval is refused until every flagged field is
-  checked. Corrections are stored apart from the model's output; rejected documents can be
-  reprocessed. Every action is audited without values
-  ([details](docs/processing/review-workflow.md)).
-
-- Observability: every request gets an id (returned in `X-Request-Id` and error bodies) that
-  follows it into its audit entries, its processing job, the worker's logs and the AI call logs.
-  Logs are JSON lines with top-level fields and key redaction. Jobs record text-extraction and AI
-  durations. The Processing screen shows the queue, outcomes, durations and failure reasons, the
-  Audit Logs screen the user's trail, and each document its activity
-  ([details](docs/operations/observability.md)).
-- Analytics over 7, 30 or 90 days in the viewer's timezone: processed documents, success and
-  failure rates, processing time, document types, confidence distribution, review rate, the share
-  of reviewed values people corrected, and daily volume. The dashboard shows the last 30 days.
-  Queries are bounded by the window and indexed ([details](docs/operations/analytics.md)).
-- Security hardening: per-user rate limits, a daily processing quota, "Delete all my data", an
-  orphaned-file sweep, a Content-Security-Policy for the web app, and an OCR check that values
-  completed without review are visible on the page, not only in a PDF's hidden text layer
-  ([security review](docs/security/security-review.md)).
-- Measured performance: API latency, OCR time and memory, and queue throughput at 1 million
-  documents, with what runs out first as volume grows
-  ([performance review](docs/operations/performance-review.md)).
-- Deployment on free tiers: GitHub Actions runs every check and starts the production Docker image
-  on each change. Only then do Render (API, with the worker in its process) and Cloudflare Pages
-  (web app) deploy. The runbook covers setup, the smoke test, rollback and the free-tier limits
-  ([deployment](docs/operations/deployment.md)).
+- **Upload:** drag and drop PDF, PNG or JPEG files up to 10 MiB, with per-file progress. The API
+  checks each file's actual bytes, not its name or declared type, and stores it privately.
+- **Text extraction:** a PDF's text layer where it has one, OCR (Tesseract) for scanned pages and
+  images. Text is kept per page with its method and OCR confidence.
+- **Classification and extraction:** the model names the document type, then extracts that type's
+  fields, each with the passage it came from. Answers are constrained to a JSON Schema and
+  validated.
+- **Evidence-based confidence:** each field is scored by checks, not by the model's self-report.
+  Is the quoted passage really in the document, does it contain the value, was the OCR good, do
+  totals and dates add up? Text-layer values must also be visible on the rendered page.
+- **Review workflow:** confident extractions complete on their own. The rest wait for a person,
+  who confirms or corrects each flagged field and then approves or rejects the document.
+  Corrections are stored apart from the model's output.
+- **Asynchronous processing:** uploads queue a job. A worker processes it with retries, backoff
+  and a dead letter, takes over a crashed worker's job, and fences out stale writes.
+- **Documents:** search by filename, filters, six sort orders with keyset pagination, preview,
+  download and delete.
+- **Observability:** a request id that follows each upload through its job, the worker and the AI
+  calls. Structured JSON logs, step timings, and Processing, Audit Logs and per-document activity
+  screens.
+- **Analytics:** volume, success and failure rates, processing time, confidence, review and
+  correction rates over 7, 30 or 90 days, in the viewer's timezone.
+- **Privacy and abuse controls:** owner-only access everywhere, an audit log without document
+  content, per-user rate limits, a daily processing quota, and "Delete all my data".
+- **Engineering:** 1,000+ automated tests with coverage thresholds and mutation checks, a
+  performance review at 1 million documents, and CI that gates every deploy.
 
 ## Architecture
 
-A modular monolith: one NestJS codebase with two entrypoints (HTTP API and worker), PostgreSQL as
-both system of record and job queue, and object storage for files. See:
+A modular monolith: one NestJS codebase with two entrypoints, the HTTP API and the worker.
+PostgreSQL is both the system of record and the job queue, and files live in object storage.
 
-- [Architecture overview](docs/architecture/overview.md)
-- [Architecture decision records](docs/adr/README.md)
-- [Database schema](docs/database/schema.md)
-- [Authentication and authorization](docs/security/authentication.md)
-- [UI foundation](docs/frontend/ui-foundation.md)
-- [Document uploads and storage](docs/storage/document-uploads.md)
-- [Document management: search, sorting, viewing and downloading](docs/documents/document-management.md)
-- [Text extraction and OCR](docs/processing/text-extraction.md)
-- [Document classification and extraction](docs/processing/document-extraction.md)
-- [AI providers](docs/ai/ai-providers.md)
+```text
+             Browser (React app)  ───── sign-up, sign-in, refresh ─────▶  Supabase Auth
+                 │  HTTPS, Authorization: Bearer <access token>                │ JWKS
+                 ▼                                                             ▼
+   ┌───────────────────────────────┐                        ┌───────────────────────────────┐
+   │ API  (apps/api/src/main.ts)   │                        │ Worker (apps/api/src/worker.ts)│
+   │ auth guard: verify token      │                        │ poll: claim job (SKIP LOCKED)  │
+   │ ownership checks, rate limits │                        │ 1. text: pdf.js / Tesseract    │
+   │ upload: check bytes, store,   │                        │ 2. AI: classify, extract       │
+   │   queue job in one transaction│                        │ 3. score evidence, validate    │
+   │ review, documents, analytics  │                        │ 4. complete or send to review  │
+   └──────┬─────────────────┬──────┘                        └──────┬──────────────┬──────────┘
+          │                 │                                      │              │
+          │                 ▼                                      ▼              ▼
+          │      ┌──────────────────────┐   ◀── jobs, rows ──  same database   AI provider
+          │      │ PostgreSQL           │                                     Ollama (local)
+          │      │ documents, jobs,     │                                     Workers AI (demo)
+          │      │ texts, extractions,  │
+          │      │ reviews, audit log   │
+          │      └──────────────────────┘
+          ▼
+   Object storage: a local folder in development, a private Cloudflare R2 bucket in the demo.
+   Only the API and the worker touch it; the browser never does.
+```
+
+In the free demo the worker runs inside the API process, because the free host has no background
+workers (ADR-009). Details: [architecture overview](docs/architecture/overview.md) and the
+[architecture decision records](docs/adr/README.md).
 
 ## Tech stack
 
-| Area           | Technology                                     | Status                            |
-| -------------- | ---------------------------------------------- | --------------------------------- |
-| Frontend       | React 19, Vite 8, Tailwind CSS 4, TypeScript   | In use                            |
-| UI             | Hand-built kit, lucide-react icons, Inter      | In use                            |
-| Backend        | NestJS 12 (Express), TypeScript                | Scaffolded                        |
-| Contracts      | Zod 4 (`packages/shared`)                      | In use                            |
-| Database       | PostgreSQL 17 (Docker locally, Supabase later) | Schema and migrations in place    |
-| Data access    | Kysely, `pg`, kysely-codegen                   | In use                            |
-| Auth           | Supabase Auth, supabase-js, `jose` (JWKS)      | In use                            |
-| Routing (web)  | React Router                                   | In use                            |
-| Job queue      | PostgreSQL (`FOR UPDATE SKIP LOCKED`)          | Implemented                       |
-| Object storage | Local folder (dev), Cloudflare R2 (AWS SDK v3) | In use (R2 not yet smoke-tested)  |
-| OCR            | pdf.js text layer + tesseract.js (WASM)        | Implemented (manual runs)         |
-| AI             | Ollama (local), Cloudflare Workers AI (demo)   | Provider layer; used from Phase 8 |
-| Tests          | Vitest, Supertest, Testing Library, axe-core   | In use                            |
-| Lint/format    | ESLint (typescript-eslint strict), Prettier    | In use                            |
+| Area           | Technology                                                     |
+| -------------- | -------------------------------------------------------------- |
+| Web app        | React 19, Vite 8, Tailwind CSS 4, React Router, TypeScript     |
+| UI             | Hand-built component kit, lucide-react icons, Inter            |
+| API and worker | NestJS 12 (Express), TypeScript, Node.js 24                    |
+| Contracts      | Zod 4 schemas shared by the API and the web app                |
+| Database       | PostgreSQL 17: Docker locally, Supabase in the demo            |
+| Data access    | Kysely, `pg`, SQL migrations, generated row types              |
+| Authentication | Supabase Auth, supabase-js, `jose` (JWKS verification)         |
+| Job queue      | PostgreSQL table, `FOR UPDATE SKIP LOCKED`                     |
+| Object storage | Local folder (development), Cloudflare R2 through AWS SDK v3   |
+| Text and OCR   | pdf.js text layer, tesseract.js (WebAssembly), @napi-rs/canvas |
+| AI             | Ollama with `qwen2.5:3b` (local), Cloudflare Workers AI (demo) |
+| Tests          | Vitest, Supertest, Testing Library, axe-core                   |
+| Tooling        | npm workspaces, ESLint (typescript-eslint strict), Prettier    |
+| Delivery       | Docker, GitHub Actions, Render, Cloudflare Pages               |
 
 ## Repository layout
 
 ```text
 apps/
-  api/        NestJS app: src/main.ts (HTTP API), src/worker.ts (worker)
-  web/        React web client
+  api/          NestJS: src/main.ts (HTTP API), src/worker.ts (worker), src/cli/ (tools),
+                src/database/migrations/, test/ (HTTP and database tests)
+  web/          React web app; public/_headers (host security headers)
 packages/
-  shared/     Zod schemas and types shared by api and web
-docs/
-  architecture/   System overview
-  adr/            Architecture decision records
-  database/       Schema, ERD, query patterns, indexes
-  security/       Authentication and authorization
-  frontend/       Design tokens, components, layout, accessibility
-  storage/        Upload validation, storage keys, consistency, R2 setup
-  documents/      Search, filters, keyset sorting, file access
-  processing/     Text extraction, OCR, classification, field extraction, job queue
-  ai/             AI providers, errors, prompts
-docker-compose.yml  Local infrastructure (PostgreSQL; Ollama with the `ai` profile)
+  shared/       Zod contracts used by the API and the web app
+docs/           Architecture, ADRs, API, database, security, processing, operations
+.github/workflows/ci.yml   Checks, image smoke test, web deploy
+Dockerfile, render.yaml    API image and its Render service
+docker-compose.yml         Local PostgreSQL, and Ollama with the `ai` profile
 ```
 
 ## Local setup
 
-**Prerequisites:** Node.js 24 (`.nvmrc`), npm 11, Docker with Compose v2, and a free Supabase
-project for signing in (see [Authentication setup](#authentication-setup); tests do not need one).
+**Prerequisites:** Node.js 24 (`.nvmrc`) with npm 11, Docker with Compose v2, and a free Supabase
+project for signing in (see [Authentication](#authentication)). The tests need no Supabase project.
 
 ```bash
 cp .env.example .env     # local defaults; edit if ports clash
 npm install
 npm run infra:up         # start PostgreSQL and wait until it is healthy
-npm run db:migrate       # apply database migrations
-npm run db:seed          # optional: demo user and documents
+npm run db:migrate       # create the schema
+npm run db:seed          # optional: a demo user with sample documents
+npm run ai:up            # optional: local AI model, needed to process documents (below)
 npm run dev              # shared (watch) + API + worker + web
 ```
 
-Then open <http://localhost:5173>, create an account and sign in. Settings → Service status
-shows "API online" when the web app can reach the API through the Vite proxy. The API's liveness endpoint is <http://localhost:3000/api/v1/health>, and
-its readiness endpoint (which checks the database) is <http://localhost:3000/api/v1/health/ready>.
+Open <http://localhost:5173>, create an account and sign in. Settings → Service status shows "API
+online" when the web app reaches the API. The API's liveness endpoint is
+<http://localhost:3000/api/v1/health>, and its readiness endpoint, which checks the database, is
+<http://localhost:3000/api/v1/health/ready>.
 
-Stop infrastructure with `npm run infra:down` (data persists in the `postgres-data` volume; add
-`-v` to `docker compose down` to delete it).
+### Database
 
-### Authentication setup
+PostgreSQL 17 runs in Docker, bound to `127.0.0.1` only. Its data persists in the `postgres-data`
+volume.
+
+| Task                  | Command                                                 |
+| --------------------- | ------------------------------------------------------- |
+| Apply migrations      | `npm run db:migrate`                                    |
+| Revert the latest one | `npm run db:rollback`                                   |
+| Revert all            | `npm run db:reset` (refused when `NODE_ENV=production`) |
+| Demo data             | `npm run db:seed` (idempotent; refused in production)   |
+| Regenerate row types  | `npm run db:codegen` after adding a migration           |
+| Check row types       | `npm run db:codegen:check` (CI runs it)                 |
+| Delete all local data | `docker compose down -v`                                |
+
+- Migrations are TypeScript files in `apps/api/src/database/migrations/`, registered in its
+  `index.ts`. In production they must stay backward compatible: the new version migrates while the
+  old one still serves ([deployment](docs/operations/deployment.md#releases-and-migrations)).
+- The integration tests use a separate database (`TEST_DATABASE_URL`). The suite drops and
+  recreates it on every run, and refuses any name that does not end in `_test`.
+- Tables, constraints, indexes and query patterns: [database schema](docs/database/schema.md).
+
+### Docker
+
+| What                 | How                                                                            |
+| -------------------- | ------------------------------------------------------------------------------ |
+| Local PostgreSQL     | `npm run infra:up` / `npm run infra:down` (`docker-compose.yml`)               |
+| Local Ollama         | `npm run ai:up` (Compose profile `ai`; downloads the model once into a volume) |
+| Production API image | `docker build -t documind-api .` from the repository root                      |
+
+The application processes run on the host during development (`npm run dev`) for fast reloads.
+The production image runs the migrations, then the API. To try it against local PostgreSQL, give it
+production-like settings (S3 storage and an AI provider are required in production):
+
+```sh
+docker run --rm --network host --env-file <production-like env file> documind-api
+```
+
+### Authentication
 
 1. Create a free project at <https://supabase.com>.
 2. In `.env`, set `SUPABASE_URL` and `VITE_SUPABASE_URL` to the project URL, and
-   `VITE_SUPABASE_PUBLISHABLE_KEY` to the publishable (or legacy anon) key. Never use the secret or
+   `VITE_SUPABASE_PUBLISHABLE_KEY` to the publishable (or legacy anon) key. Never put the secret or
    `service_role` key in the web app.
 3. Make sure the project signs tokens with an **asymmetric JWT signing key** (Dashboard → Settings
    → JWT Keys). The API rejects tokens signed with the legacy shared secret.
 4. Under Authentication → URL Configuration, set the Site URL to `http://localhost:5173` and allow
    the redirect URLs `http://localhost:5173/login` and `http://localhost:5173/reset-password`.
+5. Supabase's built-in mailer only sends to members of your Supabase team, and only two emails an
+   hour. Sign up with your own address, or add users in the dashboard.
 
-Details, including recommended hardening, are in
-[docs/security/authentication.md](docs/security/authentication.md#supabase-project-setup-manual-once).
+Details and hardening: [authentication](docs/security/authentication.md#supabase-project-setup-manual-once).
+
+### AI
+
+The worker calls an AI provider for classification and field extraction. `AI_PROVIDER` selects it.
+
+- **Ollama (local, the default):** `npm run ai:up` starts Ollama in Docker, bound to `127.0.0.1`,
+  and downloads `qwen2.5:3b` (about 2 GB, once). It runs on the CPU: a document takes a minute or
+  more, so `AI_TIMEOUT_MS` defaults to 5 minutes. A GPU-enabled Ollama, or a larger model through
+  `OLLAMA_MODEL`, also works.
+- **Cloudflare Workers AI (demo):** set `AI_PROVIDER=cloudflare`, `CLOUDFLARE_ACCOUNT_ID` and
+  `CLOUDFLARE_AI_API_TOKEN` (a token with only the "Workers AI: Read" permission). Document text
+  then leaves your machine.
+- `npm run ai:check` runs one structured request through the configured provider.
+  `npm run analyze -- <documentId>` classifies and extracts one document and prints the result
+  without storing it.
+
+Without a provider, uploads still work, and their jobs retry and then fail with an AI error code.
+Details: [AI providers](docs/ai/ai-providers.md).
+
+### OCR
+
+There is nothing to install. pdf.js and Tesseract run as JavaScript and WebAssembly inside the
+worker, and the English language data ships as an npm package, so OCR works offline.
+
+- PDF pages with a text layer skip OCR. Scanned pages are rendered at 200 DPI and read with
+  Tesseract. Images over A4 at 200 DPI are downscaled first, which bounds memory.
+- Limits: 50 pages per PDF, 25 megapixels per image, English only.
+- Speed: about 3 s per scanned page on one laptop core, and about 46 s on the free demo host.
+- `npm run extract -- <documentId>` extracts one document's text by hand and prints counts.
+
+Details: [text extraction](docs/processing/text-extraction.md).
+
+### Queue
+
+The job queue is a PostgreSQL table, so there is no broker to run.
+
+- Uploading creates a `queued` job in the same transaction as the document.
+- The worker claims the oldest due job with `FOR UPDATE SKIP LOCKED` under a lease (twice
+  `AI_TIMEOUT_MS` plus 5 minutes, 15 minutes by default). It runs one job at a time.
+- Failures are retryable or permanent. Retries back off with jitter (about 30 s, 1 min, 2 min,
+  capped at 15 min), up to 3 attempts. Then the job is a dead letter, which the user can retry from
+  the document page.
+- A crashed worker's job is taken over when its lease expires.
+- `npm run dev` runs one worker. Run more with `npm run start:worker -w @documind/api` after
+  `npm run build`, or set `WORKER_IN_PROCESS=true` to run the loop inside the API process.
+- `WORKER_POLL_INTERVAL_MS` (default 5 s) is the wait after finding no work.
+
+Details, including the "what if" cases: [job queue](docs/processing/job-queue.md).
 
 ### Scripts (repository root)
 
@@ -204,30 +252,24 @@ Details, including recommended hardening, are in
 | `npm run db:rollback`      | Revert the most recent migration                           |
 | `npm run db:reset`         | Revert all migrations (refused in production)              |
 | `npm run db:seed`          | Insert demo data (idempotent; refused in production)       |
+| `npm run db:codegen`       | Regenerate row types from the migrated database            |
+| `npm run db:codegen:check` | Fail if generated row types differ from the database       |
+| `npm run ai:up`            | Start local Ollama (Docker) and download `qwen2.5:3b`      |
+| `npm run ai:check`         | One structured round trip through the configured provider  |
 | `npm run extract -- <id>`  | Extract a document's text by hand (the worker does it too) |
 | `npm run analyze -- <id>`  | Classify and extract fields; prints, stores nothing        |
 | `npm run storage:sweep`    | List stored files no document references (`-- --delete`)   |
-| `npm run ai:up`            | Start local Ollama (Docker) and download `qwen2.5:3b`      |
-| `npm run ai:check`         | One structured round trip through the configured provider  |
-| `npm run db:codegen`       | Regenerate row types from the migrated database            |
-| `npm run db:codegen:check` | Fail if generated row types differ from the database       |
-
-Run a single process with `npm run start -w @documind/api` (API) or
-`npm run start:worker -w @documind/api` (worker) after `npm run build`.
 
 ### Tests
 
-API tests are split into two Vitest projects:
-
-- `unit`: no external services.
-- Authentication tests sign tokens with a locally generated key pair, so no Supabase project is
-  needed.
-- `integration`: runs against `TEST_DATABASE_URL`. The suite **drops and recreates** that database
-  on every run and refuses any database name that does not end in `_test`.
-
-Run one project with `npx vitest run --project unit` (or `integration`) inside `apps/api`. No test
-calls a live AI provider, Supabase or a storage bucket. The layers, the fakes, coverage and the
-mutation checks are described in [docs/testing/testing-strategy.md](docs/testing/testing-strategy.md).
+- **API:** two Vitest projects. `unit` needs no services. `integration` runs against
+  `TEST_DATABASE_URL` (PostgreSQL from `npm run infra:up`). Run one with
+  `npx vitest run --project unit` inside `apps/api`.
+- **Web:** components and pages in jsdom with Testing Library, plus axe-core accessibility checks of
+  every page.
+- No test calls a live AI provider, Supabase or storage bucket. Authentication tests sign tokens
+  with a locally generated key pair.
+- Layers, fakes, coverage thresholds and mutation checks: [testing strategy](docs/testing/testing-strategy.md).
 
 ## Environment variables
 
@@ -271,53 +313,112 @@ with a message naming the variable.
 | `POSTGRES_PORT`                 | `5432`                                     | Docker Compose                   | Host port, bound to 127.0.0.1                                            |
 | `OLLAMA_PORT`                   | `11434`                                    | Docker Compose (`ai` profile)    | Host port, bound to 127.0.0.1                                            |
 
+## Security model
+
+What the code enforces; the threat-by-threat review is in the [security review](docs/security/security-review.md).
+
+- **Authentication:** Supabase issues access tokens. The API verifies each one itself, with
+  Supabase's public keys (JWKS), the issuer, the audience and the expiry. Every route requires a
+  token unless it is marked public: only the two health checks are.
+- **Authorization:** every query is scoped to the caller. Another user's document is a 404, the
+  same as a missing one, so ids cannot be probed. Composite foreign keys keep a job's owner equal
+  to its document's owner.
+- **Files:** the API checks each upload's bytes and stores it under a generated key in a private
+  bucket. Files are only ever streamed back through the API to their owner, with the stored type
+  and `nosniff`.
+- **Untrusted document text:** prompts mark it as data, answers must match a JSON Schema, and every
+  value is checked against the document before it can complete without a person.
+- **Browser:** a strict Content-Security-Policy (only the app's own scripts; connections only to the
+  API and Supabase), `frame-ancestors 'none'`, HSTS, and no server-rendered HTML.
+- **Abuse:** per-user rate limits, a daily processing quota and a 10 MiB upload limit.
+- **Secrets:** read from the environment and validated at startup. They are never logged (log keys
+  are redacted), never sent to the browser, and never committed. Production secrets live only on
+  the host.
+- **Privacy:** the audit log records who did what, never document content. "Delete all my data"
+  erases the user's documents and files ([ADR-010](docs/adr/010-data-retention-and-erasure.md)).
+
+Known gaps: access tokens stay valid until they expire, even after sign-out; tokens are kept in
+`localStorage`; MFA is not enforced; rate limits are per process
+([authentication](docs/security/authentication.md#known-limitations)).
+
 ## API
 
-| Method | Path                                             | Auth   | Description                                                                                                                                                      |
-| ------ | ------------------------------------------------ | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/v1/health`                                 | None   | Liveness: `{ "status": "ok", "timestamp" }`                                                                                                                      |
-| GET    | `/api/v1/health/ready`                           | None   | Readiness: same body when the database answers; 503 otherwise                                                                                                    |
-| GET    | `/api/v1/me`                                     | Bearer | The signed-in user; creates the user record on first call                                                                                                        |
-| DELETE | `/api/v1/me`                                     | Bearer | Erases all your documents, files and your profile; 204 ([details](docs/adr/010-data-retention-and-erasure.md))                                                   |
-| GET    | `/api/v1/documents`                              | Bearer | The caller's documents: `q`, `status`, `type`, `format`, `sort`, `limit` (1–100, default 20), opaque `cursor` ([details](docs/documents/document-management.md)) |
-| GET    | `/api/v1/documents/:id`                          | Bearer | One of the caller's documents; 404 for other users' and unknown ids                                                                                              |
-| GET    | `/api/v1/documents/:id/content`                  | Bearer | The file; `disposition=inline` (preview) or `attachment` (default, download); audited; 404 if not yours                                                          |
-| POST   | `/api/v1/documents`                              | Bearer | Multipart upload, one `file` part (PDF/PNG/JPEG ≤ 10 MB); 201 with the document, queued for processing; 413/415/400 on rejection                                 |
-| DELETE | `/api/v1/documents/:id`                          | Bearer | Deletes the document and its file; 204, or 404 if it is not yours                                                                                                |
-| GET    | `/api/v1/documents/:id/jobs`                     | Bearer | The document's 20 most recent processing jobs: status, stage, attempts, error code ([details](docs/processing/job-queue.md))                                     |
-| POST   | `/api/v1/documents/:id/jobs`                     | Bearer | Reprocesses a failed or rejected document: 202 with the queued job (the active job if one exists); 409 once in review or completed                               |
-| GET    | `/api/v1/documents/:id/extraction`               | Bearer | Latest extraction with field scores, flags and review state ([details](docs/processing/review-workflow.md))                                                      |
-| PUT    | `/api/v1/documents/:id/extraction/fields/:field` | Bearer | Confirms or corrects one field while the document is in review                                                                                                   |
-| POST   | `/api/v1/documents/:id/extraction/approve`       | Bearer | Completes the document; 409 while flagged fields are unchecked                                                                                                   |
-| POST   | `/api/v1/documents/:id/extraction/reject`        | Bearer | Marks the document `rejected`, with an optional reason                                                                                                           |
-| GET    | `/api/v1/documents/:id/activity`                 | Bearer | The document's 50 most recent audit entries (its timeline); 404 if not yours                                                                                     |
-| GET    | `/api/v1/processing/summary`                     | Bearer | Your queue now, and the last 7 days' outcomes, failure codes and step durations                                                                                  |
-| GET    | `/api/v1/processing/jobs`                        | Bearer | Your 50 most recent jobs across documents; `?status=` filter                                                                                                     |
-| GET    | `/api/v1/audit-logs`                             | Bearer | Your actions and the system's actions on your documents, newest first; `?cursor=` paging                                                                         |
-| GET    | `/api/v1/analytics`                              | Bearer | Your analytics: `days` = 7, 30 or 90; `tz` = your IANA timezone                                                                                                  |
+The full reference, with every shape, status code and an example session, is in
+[docs/api](docs/api/README.md). Paths below are under `/api/v1`; "Bearer" means a Supabase access
+token is required.
 
-Every authenticated endpoint allows 300 requests per minute per user; upload and reprocessing
-also share 10 per minute and 50 per 24 hours. Over a limit the API answers 429 (with
-`Retry-After` for the per-minute limits).
-
-All errors use `{ "error": { "code": "<HTTP_STATUS_NAME>", "message": "…" } }`. Server errors
-never include internal details. Authenticated endpoints return 401 (with `WWW-Authenticate`) for a
-missing, invalid or expired token, and 503 if Supabase's signing keys cannot be fetched.
+| Method | Path                                      | Auth   | Description                                                                                                                                                      |
+| ------ | ----------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/health`                                 | None   | Liveness: `{ "status": "ok", "timestamp" }`                                                                                                                      |
+| GET    | `/health/ready`                           | None   | Readiness: same body when the database answers; 503 otherwise                                                                                                    |
+| GET    | `/me`                                     | Bearer | The signed-in user; creates the user record on first call                                                                                                        |
+| DELETE | `/me`                                     | Bearer | Erases all your documents, files and your profile; 204 ([details](docs/adr/010-data-retention-and-erasure.md))                                                   |
+| GET    | `/documents`                              | Bearer | The caller's documents: `q`, `status`, `type`, `format`, `sort`, `limit` (1–100, default 20), opaque `cursor` ([details](docs/documents/document-management.md)) |
+| GET    | `/documents/:id`                          | Bearer | One of the caller's documents; 404 for other users' and unknown ids                                                                                              |
+| GET    | `/documents/:id/content`                  | Bearer | The file; `disposition=inline` (preview) or `attachment` (default, download); audited; 404 if not yours                                                          |
+| POST   | `/documents`                              | Bearer | Multipart upload, one `file` part (PDF/PNG/JPEG ≤ 10 MB); 201 with the document, queued for processing; 413/415/400 on rejection                                 |
+| DELETE | `/documents/:id`                          | Bearer | Deletes the document and its file; 204, or 404 if it is not yours                                                                                                |
+| GET    | `/documents/:id/jobs`                     | Bearer | The document's 20 most recent processing jobs: status, stage, attempts, error code ([details](docs/processing/job-queue.md))                                     |
+| POST   | `/documents/:id/jobs`                     | Bearer | Reprocesses a failed or rejected document: 202 with the queued job (the active job if one exists); 409 once in review or completed                               |
+| GET    | `/documents/:id/extraction`               | Bearer | Latest extraction with field scores, flags and review state ([details](docs/processing/review-workflow.md))                                                      |
+| PUT    | `/documents/:id/extraction/fields/:field` | Bearer | Confirms or corrects one field while the document is in review                                                                                                   |
+| POST   | `/documents/:id/extraction/approve`       | Bearer | Completes the document; 409 while flagged fields are unchecked                                                                                                   |
+| POST   | `/documents/:id/extraction/reject`        | Bearer | Marks the document `rejected`, with an optional reason                                                                                                           |
+| GET    | `/documents/:id/activity`                 | Bearer | The document's 50 most recent audit entries (its timeline); 404 if not yours                                                                                     |
+| GET    | `/processing/summary`                     | Bearer | Your queue now, and the last 7 days' outcomes, failure codes and step durations                                                                                  |
+| GET    | `/processing/jobs`                        | Bearer | Your 50 most recent jobs across documents; `?status=` filter                                                                                                     |
+| GET    | `/audit-logs`                             | Bearer | Your actions and the system's actions on your documents, newest first; `?cursor=` paging                                                                         |
+| GET    | `/analytics`                              | Bearer | Your analytics: `days` = 7, 30 or 90; `tz` = your IANA timezone                                                                                                  |
 
 ## Deployment
 
-The demo runs on free tiers: Cloudflare Pages (web app), Render (API and worker, from the
-`Dockerfile` and `render.yaml`), Supabase (database and sign-in), Cloudflare R2 (files) and
-Cloudflare Workers AI. Every pull request and push runs `.github/workflows/ci.yml`. A push to
-`main` deploys both sides once the checks pass. Setup, the post-deploy smoke test, rollback,
-housekeeping and the free-tier limits are in [docs/operations/deployment.md](docs/operations/deployment.md).
+The demo runs on free tiers:
 
-Build and run the production image locally (it migrates the database first):
+| Part              | Host                                                             |
+| ----------------- | ---------------------------------------------------------------- |
+| Web app           | Cloudflare Pages                                                 |
+| API + worker      | Render free web service, from the `Dockerfile` and `render.yaml` |
+| Database, sign-in | Supabase                                                         |
+| Files             | Cloudflare R2 (private bucket)                                   |
+| AI                | Cloudflare Workers AI                                            |
 
-```sh
-docker build -t documind-api .
-docker run --rm --network host --env-file <production-like env file> documind-api
-```
+Every pull request and push runs `.github/workflows/ci.yml`: format, lint, types, migrations,
+generated-types check, all tests with coverage, build, `npm audit`, and a smoke test of the
+production image. A push to `main` deploys both sides once every check has passed. The
+[deployment runbook](docs/operations/deployment.md) covers the one-time setup, secrets, the
+post-deploy smoke test, rollback, logs and monthly housekeeping.
+
+## Free-tier constraints
+
+Checked on 2026-11-04. Free tiers change without notice.
+
+| Provider         | Limit                                                                                                       | Effect                                                               |
+| ---------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Render           | Sleeps after 15 min idle (about a minute to wake); 512 MB, 0.1 CPU; no background workers                   | Slow first request; OCR about 46 s a page; worker in the API process |
+| Supabase         | 500 MB database; paused after a week of low activity; built-in mailer sends only to team members, 2 an hour | Public sign-up needs custom SMTP                                     |
+| Cloudflare R2    | 10 GB-month, 1M Class A and 10M Class B operations a month                                                  | Files never expire, so storage fills first                           |
+| Workers AI       | 10,000 Neurons a day                                                                                        | About 27 documents a day                                             |
+| Cloudflare Pages | 500 builds a month, 20,000 files                                                                            | Far above what the app needs                                         |
+| GitHub Actions   | Free for public repositories; 2,000 minutes a month for private ones                                        | A CI run takes a few minutes                                         |
+
+Sources, measurements and what runs out first as volume grows: [deployment](docs/operations/deployment.md#free-tier-limits)
+and the [performance review](docs/operations/performance-review.md).
+
+## Limitations
+
+- **A demo, not a product.** No SLA, no monitoring or alerting, one instance. DocuMind runs no backups
+  of its own; whatever the Supabase plan provides is all there is.
+- **Accuracy:** three document types, English text only. Confidence is a rule-based review signal,
+  not a probability. Auto-completed extractions are not checked by a person.
+- **Free-host speed:** a long scan can take 15 minutes or more, and the host may sleep mid-job (the
+  job is retried later). Text-layer PDFs process in seconds.
+- **Processing is one job at a time per worker,** and the web app does not refresh a document's
+  status on its own.
+- **Retention:** files are kept until the user deletes them. There is no automatic expiry yet.
+- **Erasure keeps the Supabase sign-in account,** which must be deleted in Supabase by hand.
+- **Scale:** analytics and filename search slow down for a single account with many thousands of
+  documents ([performance review](docs/operations/performance-review.md)).
+- **Not independently tested** for security or accessibility beyond the automated checks.
 
 ## Troubleshooting
 
@@ -341,6 +442,30 @@ docker run --rm --network host --env-file <production-like env file> documind-ap
 - **Password reset link opens the login page or says "Link expired"**: add
   `http://localhost:5173/reset-password` to the Supabase redirect allow-list, and open the link in
   the browser that requested it.
+- **Jobs stay queued or fail with `ai_unavailable`**: no AI provider is reachable. Run
+  `npm run ai:up`, then `npm run ai:check`.
+- **Jobs fail with `ai_timeout` on CPU-only Ollama**: raise `AI_TIMEOUT_MS`, or use a smaller
+  document.
+- **Deployed web app cannot reach the API** (CORS or CSP errors in the console): `VITE_API_URL`
+  (GitHub variable) and `CORS_ALLOWED_ORIGINS` (Render) must name each other's origin exactly, with
+  no trailing slash.
+- **Deployed API fails to start**: the Render log names the invalid variable, or the migration
+  that failed. More in [deployment](docs/operations/deployment.md).
+
+## Documentation
+
+| Topic             | Document                                                                                                                                                                                                                         |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Architecture      | [overview](docs/architecture/overview.md), [decision records](docs/adr/README.md)                                                                                                                                                |
+| API               | [reference](docs/api/README.md)                                                                                                                                                                                                  |
+| Database          | [schema, indexes, query patterns](docs/database/schema.md)                                                                                                                                                                       |
+| Security          | [authentication](docs/security/authentication.md), [security review](docs/security/security-review.md)                                                                                                                           |
+| Uploads and files | [uploads and storage](docs/storage/document-uploads.md), [document management](docs/documents/document-management.md)                                                                                                            |
+| Processing        | [text extraction](docs/processing/text-extraction.md), [classification and extraction](docs/processing/document-extraction.md), [job queue](docs/processing/job-queue.md), [review workflow](docs/processing/review-workflow.md) |
+| AI                | [providers, prompts, errors](docs/ai/ai-providers.md)                                                                                                                                                                            |
+| Web app           | [UI foundation](docs/frontend/ui-foundation.md)                                                                                                                                                                                  |
+| Operations        | [deployment](docs/operations/deployment.md), [observability](docs/operations/observability.md), [analytics](docs/operations/analytics.md), [performance review](docs/operations/performance-review.md)                           |
+| Testing           | [testing strategy](docs/testing/testing-strategy.md)                                                                                                                                                                             |
 
 ## Contributing
 
