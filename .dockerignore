@@ -1,0 +1,8 @@
+# Keep secrets and local artifacts out of the build context.
+.env
+.env.*
+.git
+**/node_modules
+**/dist
+**/coverage
+**/.data
