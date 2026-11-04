@@ -27,8 +27,10 @@ at a time, and starts each test from empty tables.
 | Web components and pages | `apps/web/src/**/*.spec.tsx`                           | jsdom with Testing Library; fake auth client, fetch and XHR             |
 | Accessibility            | `apps/web/src/a11y.spec.tsx`                           | axe-core over every page                                                |
 
-There is no browser end-to-end suite yet. A smoke test of sign-in, upload, erasure and the CSP
-against the real Supabase project belongs to deployment (Phase 16).
+There is no browser end-to-end suite yet. After each deploy, a manual smoke test covers sign-in,
+upload, erasure, the CSP and the host headers against the real services
+([deployment](../operations/deployment.md#after-every-deploy-smoke-test)). CI runs every suite on each
+pull request, and starts the production image (`.github/workflows/ci.yml`).
 
 ## Test doubles
 

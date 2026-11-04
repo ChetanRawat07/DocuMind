@@ -55,4 +55,5 @@ append-only and is also what the processing quota counts.
 - An upload in flight during an erasure either commits before the erasure deletes its document
   (both lock the user row), or fails on the missing user and removes its file.
 - Erasing data does not reset the daily processing quota.
-- Phase 16 should document the manual Supabase account deletion and schedule the sweep's dry run.
+- The manual Supabase account deletion and a monthly dry run of the sweep are in the
+  [deployment runbook](../operations/deployment.md#monthly-housekeeping-manual) (ADR-021).

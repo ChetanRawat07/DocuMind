@@ -153,5 +153,6 @@ RETURNING *;
 - **Polling:** latency up to `WORKER_POLL_INTERVAL_MS` after an empty poll.
 - **No automatic UI updates:** the web app shows the document status but does not refresh it while
   processing runs.
-- **Not yet wired up for the demo:** running the worker inside the API process on the free host is
-  Phase 16.
+- **In-process worker on the free host:** `WORKER_IN_PROCESS=true` runs the poll loop inside the API
+  process. A job running when Render spins the instance down is retried on the next wake
+  ([deployment](../operations/deployment.md#known-limitations)).

@@ -52,4 +52,4 @@ content or secrets.
 - How to trace a request and what each log line holds:
   [docs/operations/observability.md](../operations/observability.md).
 - Phase 12 analytics can reuse the job durations, and the audit log for review rates.
-- Phase 16 should point the hosting platform's log search and alerts at the JSON fields.
+- On Render, the log search works on the JSON fields ([deployment](../operations/deployment.md#logs-and-alerts)). Free-plan logs are kept only briefly, and nothing alerts on errors.

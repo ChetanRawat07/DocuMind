@@ -40,7 +40,8 @@ legacy shared secret (HS256), which Supabase discourages.
 ## Consequences
 
 - Tokens are stored in `localStorage` by supabase-js and are readable by any script on the page: a
-  strict CSP becomes a deployment requirement (Phase 16).
+  strict CSP is required: a meta-tag CSP since Phase 13, plus `frame-ancestors` and HSTS as host
+  headers since Phase 16 (ADR-021).
 - Access tokens cannot be revoked before expiry; the token lifetime is the revocation window.
 - Supabase key rotation works without restarts (unknown key ids trigger a JWKS refetch).
 - A Supabase outage makes authenticated endpoints return 503 (new tokens cannot be verified once

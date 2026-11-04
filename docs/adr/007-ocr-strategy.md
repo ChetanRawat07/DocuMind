@@ -30,7 +30,7 @@ document may leave the server for an external OCR service.
 
 - **Native poppler and Tesseract binaries:** faster and more memory-efficient, but every
   environment would need them installed: a Dockerfile for Render, apt steps in CI, and setup for
-  each developer. Worth reconsidering in Phase 16 together with the deployment target.
+  each developer. Phase 16 kept the WebAssembly engines: the Docker image now exists, but the free instance's measured memory (336 MB peak for a 20 MP photo) leaves no pressing need ([deployment](../operations/deployment.md#measured-on-the-free-instances-limits)).
 - **A hosted OCR API (cloud vision services):** better accuracy, but documents would leave the
   system, it costs money beyond free tiers, and it needs network access in tests.
 - **OCR every page:** simpler, but much slower and less accurate than an existing text layer.

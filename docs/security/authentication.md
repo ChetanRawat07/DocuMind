@@ -125,8 +125,9 @@ Route guards are a usability feature. The security boundary is the API.
    (Dashboard → Settings → JWT Keys); the API rejects HS256 tokens.
 3. **Authentication → Providers → Email:** keep **Confirm email** on.
 4. **Authentication → URL Configuration:** set the Site URL to the web app (locally
-   `http://localhost:5173`) and add `http://localhost:5173/reset-password` and
-   `http://localhost:5173/login` to the redirect allow-list.
+   `http://localhost:5173`; deployed, the Pages origin) and add `<origin>/reset-password` and
+   `<origin>/login` for each origin to the redirect allow-list
+   ([deployment](../operations/deployment.md#7-close-the-loop)).
 5. Optional hardening: minimum password length 8, leaked-password protection, a shorter access
    token lifetime (see limitations).
 
@@ -140,8 +141,8 @@ Automated tests need none of this: they sign tokens with a locally generated key
   Supabase on every request would close the gap at the cost of a network call per request.
 - **Tokens live in `localStorage`** (supabase-js default), so an XSS bug could steal a session. A
   Content-Security-Policy in the built `index.html` (Phase 13) allows only the app's own
-  scripts and connections to the API and Supabase; `frame-ancestors` still needs a host header
-  (Phase 16). React
+  scripts and connections to the API and Supabase; `frame-ancestors` and HSTS
+  come from the host's headers (`apps/web/public/_headers`, Phase 16). React
   escapes rendered values and the app renders no server-provided HTML.
 - **Rate limits are per user and per process** (Phase 13, [security review](security-review.md)).
   Requests without a valid token are not counted; flooding with them is left to the host's edge.

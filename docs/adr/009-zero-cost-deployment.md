@@ -1,6 +1,6 @@
 # ADR-009: Zero-cost deployment architecture
 
-- **Status:** Accepted (details finalized in Phase 16)
+- **Status:** Accepted (pipeline details in [ADR-021](021-deployment-pipeline.md))
 - **Date:** 2026-10-26
 
 ## Context
@@ -12,7 +12,9 @@ Workers AI.
 Render's free tier covers web services but **not background workers**. Render staff confirm this
 in its community forum, and its compute-plan docs list the free instance (512 MB RAM, 0.1 CPU) for
 web services only. Free web services also spin down after a period of inactivity. These facts were
-checked on 2026-10-26 and must be re-verified in Phase 16, since free tiers change.
+checked on 2026-10-26 and re-checked on 2026-11-04: Render's free page still lists no background
+workers, cron jobs or disks, and pre-deploy commands are for paid services only. Its free page no
+longer states the instance size, so 512 MB and 0.1 CPU are the last published figures.
 
 ## Decision
 
@@ -25,8 +27,10 @@ checked on 2026-10-26 and must be re-verified in Phase 16, since free tiers chan
 ## Alternatives
 
 - **Paid Render background worker.** Violates the zero-cost constraint.
-- **Another host with free background workers.** Possible; to be re-evaluated in Phase 16 against
-  then-current free tiers.
+- **Another host with free background workers.** Not adopted in Phase 16: the in-process worker
+  stays within the free instance's memory (measured in
+  [deployment](../operations/deployment.md#measured-on-the-free-instances-limits)), so moving hosts
+  would add a provider without fixing the CPU limit.
 
 ## Trade-offs
 
@@ -39,4 +43,4 @@ checked on 2026-10-26 and must be re-verified in Phase 16, since free tiers chan
 
 - The worker lifecycle must support graceful shutdown, since platform restarts send SIGTERM.
   Phase 0 implements this for the poll loop.
-- Phase 16 must document free-tier limits explicitly.
+- The free-tier limits are documented in [deployment](../operations/deployment.md#free-tier-limits).

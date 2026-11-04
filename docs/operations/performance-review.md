@@ -123,7 +123,7 @@ documents.
 - **2 AI calls.** Their latency was not measured here; Workers AI is a cloud call.
 - About **4–8 KB** of database rows and **0.3–1 MB** of stored file.
 
-Free-tier limits change. Recheck them in Phase 16.
+Free-tier limits change. They were rechecked in Phase 16 ([deployment](deployment.md#free-tier-limits)).
 
 | Limit                                     | Free allowance                | Documents it supports                                   |
 | ----------------------------------------- | ----------------------------- | ------------------------------------------------------- |

@@ -90,6 +90,10 @@ extraction) and 9 (asynchronous queue and workers) are complete.** The following
 - Measured performance: API latency, OCR time and memory, and queue throughput at 1 million
   documents, with what runs out first as volume grows
   ([performance review](docs/operations/performance-review.md)).
+- Deployment on free tiers: GitHub Actions runs every check and starts the production Docker image
+  on each change. Only then do Render (API, with the worker in its process) and Cloudflare Pages
+  (web app) deploy. The runbook covers setup, the smoke test, rollback and the free-tier limits
+  ([deployment](docs/operations/deployment.md)).
 
 ## Architecture
 
@@ -238,6 +242,7 @@ with a message naming the variable.
 | `PORT`                          | `3000`                                     | API, web dev proxy               | HTTP port of the API                                                     |
 | `CORS_ALLOWED_ORIGINS`          | empty                                      | API                              | Comma-separated bare origins; empty disables cross-origin access         |
 | `WORKER_POLL_INTERVAL_MS`       | `5000`                                     | Worker                           | Wait after an empty poll (100–60000)                                     |
+| `WORKER_IN_PROCESS`             | `false`                                    | API                              | `true`: the API process also runs the poll loop (free host, ADR-009)     |
 | `DATABASE_URL`                  | none (required)                            | API, worker, CLIs                | `postgres://` URL of the application database; contains credentials      |
 | `DATABASE_POOL_MAX`             | `10`                                       | API, worker                      | Connections per process (1–50)                                           |
 | `DATABASE_STATEMENT_TIMEOUT_MS` | `30000`                                    | API, worker                      | Server-side limit per statement (1000–300000)                            |
@@ -245,6 +250,7 @@ with a message naming the variable.
 | `SUPABASE_URL`                  | none (required)                            | API (validated in all processes) | Supabase project URL; https (http only for localhost outside production) |
 | `VITE_SUPABASE_URL`             | none (required)                            | Web (public)                     | Supabase project URL for the browser                                     |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | none (required)                            | Web (public)                     | Publishable/anon key; public by design                                   |
+| `VITE_API_URL`                  | empty (same origin)                        | Web build (public)               | API origin when it is on another host; `https://host`, no path           |
 | `STORAGE_DRIVER`                | `filesystem`                               | API, worker                      | `filesystem` (dev/tests; refused in production) or `s3` (R2)             |
 | `STORAGE_FILESYSTEM_ROOT`       | `.data/storage`                            | API, worker                      | Folder for the filesystem driver, relative to the working directory      |
 | `S3_ENDPOINT`                   | none                                       | API, worker (`s3` driver)        | e.g. `https://<account-id>.r2.cloudflarestorage.com`; https required     |
@@ -297,6 +303,21 @@ also share 10 per minute and 50 per 24 hours. Over a limit the API answers 429 (
 All errors use `{ "error": { "code": "<HTTP_STATUS_NAME>", "message": "…" } }`. Server errors
 never include internal details. Authenticated endpoints return 401 (with `WWW-Authenticate`) for a
 missing, invalid or expired token, and 503 if Supabase's signing keys cannot be fetched.
+
+## Deployment
+
+The demo runs on free tiers: Cloudflare Pages (web app), Render (API and worker, from the
+`Dockerfile` and `render.yaml`), Supabase (database and sign-in), Cloudflare R2 (files) and
+Cloudflare Workers AI. Every pull request and push runs `.github/workflows/ci.yml`. A push to
+`main` deploys both sides once the checks pass. Setup, the post-deploy smoke test, rollback,
+housekeeping and the free-tier limits are in [docs/operations/deployment.md](docs/operations/deployment.md).
+
+Build and run the production image locally (it migrates the database first):
+
+```sh
+docker build -t documind-api .
+docker run --rm --network host --env-file <production-like env file> documind-api
+```
 
 ## Troubleshooting
 

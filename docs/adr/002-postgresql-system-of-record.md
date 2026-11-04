@@ -25,7 +25,7 @@ Schema changes are made only through version-controlled migrations (tooling chos
 
 ## Trade-offs
 
-- Supabase's free tier has storage, connection and inactivity limits (documented in Phase 16).
+- Supabase's free tier has storage, connection and inactivity limits (documented in [deployment](../operations/deployment.md#free-tier-limits)).
 - Extraction payloads in `jsonb` need deliberate validation because the database will not enforce
   their inner shape.
 

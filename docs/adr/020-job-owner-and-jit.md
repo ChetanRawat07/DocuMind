@@ -53,4 +53,5 @@ Phase 15 measured the API against 1 million documents and jobs
 - The Processing summary and job list are bounded by the user's own recent jobs: 5–31 ms for the
   largest measured account.
 - Every direct insert into `processing_jobs` (seed, test factories) supplies `user_id`.
-- Phase 16 should confirm that the deployed role shows `jit=off` (`SHOW jit`).
+- CI checks `SHOW jit` in the production image; the first real deploy checks it through the Supabase
+  pooler ([deployment smoke test](../operations/deployment.md#after-every-deploy-smoke-test)).

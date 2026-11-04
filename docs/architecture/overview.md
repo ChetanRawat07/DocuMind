@@ -3,7 +3,7 @@
 This document describes the architecture **as implemented** and marks planned parts explicitly.
 Decisions and their reasoning live in [the ADRs](../adr/README.md).
 
-## Current state: Phase 15 (performance and scalability review)
+## Current state: Phase 16 (deployment and CI/CD)
 
 Implemented: repository structure, the API process with liveness and readiness endpoints, the
 worker process skeleton, shared contracts, configuration validation, the PostgreSQL schema with
@@ -30,9 +30,13 @@ evidence before automatic completion ([security review](../security/security-rev
 test suite checked for gaps with coverage thresholds and mutation testing
 ([testing strategy](../testing/testing-strategy.md)), and a performance review at 1 million
 documents that fixed the job queries, OCR memory for large photos and JIT overhead
-([performance review](../operations/performance-review.md)).
+([performance review](../operations/performance-review.md)), and a deployment pipeline: GitHub
+Actions checks every change and starts the production Docker image; Render deploys the API (with
+the worker in its process) and Cloudflare Pages the web app, only after the checks pass
+([deployment](../operations/deployment.md)).
 
 - Schema, constraints and indexes: [database/schema.md](../database/schema.md)
+- Deployment, CI and free-tier limits: [operations/deployment.md](../operations/deployment.md)
 - Text extraction and OCR: [processing/text-extraction.md](../processing/text-extraction.md)
 - AI providers: [ai/ai-providers.md](../ai/ai-providers.md)
 - Classification and extraction: [processing/document-extraction.md](../processing/document-extraction.md)
@@ -53,7 +57,7 @@ documents that fixed the job queries, OCR memory for large photos and JIT overhe
                     ▼
      ┌──────────────────────────────┐
      │ apps/web (React + Vite)      │   dev: Vite server proxies /api → API
-     └──────────────┬───────────────┘   demo: Cloudflare Pages (Phase 16)
+     └──────────────┬───────────────┘   demo: Cloudflare Pages, API on Render (cross-origin, CORS)
                     │ HTTPS /api/v1/*  Authorization: Bearer <access token>
                     ▼
      ┌──────────────────────────────┐        ┌──────────────────────────────┐
@@ -79,8 +83,8 @@ documents that fixed the job queries, OCR memory for large photos and JIT overhe
            Ollama / Cloudflare Workers AI behind an AI provider interface (Phase 7)
 ```
 
-In the zero-cost demo deployment the worker runs inside the API's process (ADR-009). The code
-already keeps the two separate so either topology works.
+In the zero-cost demo deployment the worker runs inside the API's process (`WORKER_IN_PROCESS=true`,
+ADR-009, ADR-021). The code keeps the two separate, so either topology works.
 
 ## Code layout
 

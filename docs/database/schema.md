@@ -394,8 +394,9 @@ Configured per process in `apps/api/src/database/create-database.ts`:
 | `application_name`                    | `documind-api`, `documind-worker`, …           | Identifies each process in `pg_stat_activity`.                                                                                        |
 | Pool `error` listener                 | logs                                           | An idle connection dropped by the server (for example on a restart) would otherwise crash the process. Verified by stopping Postgres. |
 
-Not verified yet: whether Supabase's transaction-mode pooler honours the timeout startup parameters.
-Check in Phase 16.
+The deployment uses Supabase's session pooler, which keeps a server connection per client session.
+Not verified yet: that it applies the timeout startup parameters. The
+[deployment smoke test](../operations/deployment.md#after-every-deploy-smoke-test) checks it.
 
 ## Seed data
 
