@@ -1,6 +1,7 @@
 import { type HealthResponse, healthResponseSchema } from '@documind/shared';
+import { API_BASE_PATH } from './api-client';
 
-export const HEALTH_ENDPOINT = '/api/v1/health';
+export const HEALTH_ENDPOINT = `${API_BASE_PATH}/health`;
 
 /**
  * Fetches API liveness and validates the response against the shared contract,

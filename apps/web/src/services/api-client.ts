@@ -1,8 +1,9 @@
 import { apiErrorResponseSchema, UPLOAD_FIELD_NAME } from '@documind/shared';
 import type { z } from 'zod';
 import type { AuthClient } from '../auth/auth-client';
+import { apiOrigin } from '../lib/api-origin';
 
-export const API_BASE_PATH = '/api/v1';
+export const API_BASE_PATH = `${apiOrigin(import.meta.env.VITE_API_URL as string | undefined)}/api/v1`;
 
 /**
  * A non-2xx API response, carrying the shared error envelope's code and the

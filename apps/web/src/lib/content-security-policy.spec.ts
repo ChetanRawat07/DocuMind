@@ -21,6 +21,17 @@ describe('contentSecurityPolicy', () => {
     expect(policy['connect-src']).toEqual(["'self'", 'https://abc.supabase.co']);
   });
 
+  it('also allows the API’s host when it is on another origin', () => {
+    const crossOrigin = directives(
+      contentSecurityPolicy('https://abc.supabase.co', 'https://documind-api.onrender.com'),
+    );
+    expect(crossOrigin['connect-src']).toEqual([
+      "'self'",
+      'https://abc.supabase.co',
+      'https://documind-api.onrender.com',
+    ]);
+  });
+
   it('allows blob previews, and no plugins, frames or base or form hijacking', () => {
     expect(policy['object-src']).toEqual(['blob:']);
     expect(policy['img-src']).toEqual(["'self'", 'blob:', 'data:']);

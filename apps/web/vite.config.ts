@@ -2,13 +2,17 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { loadEnv, type Plugin } from 'vite';
 import { defineConfig } from 'vitest/config';
+import { apiOrigin } from './src/lib/api-origin.ts';
 import { contentSecurityPolicy } from './src/lib/content-security-policy.ts';
 
 // Environment files live at the repository root, shared with the API.
 const envDir = '../..';
 
 /** Build only: the dev server injects inline scripts (React refresh) that this policy blocks. */
-function contentSecurityPolicyMeta(supabaseUrl: string | undefined): Plugin {
+function contentSecurityPolicyMeta(
+  supabaseUrl: string | undefined,
+  apiUrl: string | undefined,
+): Plugin {
   return {
     name: 'documind-content-security-policy',
     apply: 'build',
@@ -20,7 +24,8 @@ function contentSecurityPolicyMeta(supabaseUrl: string | undefined): Plugin {
           tag: 'meta',
           attrs: {
             'http-equiv': 'Content-Security-Policy',
-            content: contentSecurityPolicy(supabaseUrl),
+            // apiOrigin throws on an invalid VITE_API_URL, which fails the build.
+            content: contentSecurityPolicy(supabaseUrl, apiOrigin(apiUrl)),
           },
           injectTo: 'head-prepend',
         },
@@ -34,7 +39,11 @@ export default defineConfig(({ mode }) => {
 
   return {
     envDir,
-    plugins: [react(), tailwindcss(), contentSecurityPolicyMeta(env.VITE_SUPABASE_URL)],
+    plugins: [
+      react(),
+      tailwindcss(),
+      contentSecurityPolicyMeta(env.VITE_SUPABASE_URL, env.VITE_API_URL),
+    ],
     server: {
       // Same-origin /api calls in development avoid CORS and mirror a reverse-proxied deployment.
       proxy: {
