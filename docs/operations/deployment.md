@@ -51,7 +51,16 @@ into the Render dashboard or GitHub secrets only.
    - Not the direct connection: on the free plan it is IPv6-only, and Render connects over IPv4.
    - Not the transaction pooler (port 6543): the migrations and the queue work through it, but
      `statement_timeout` and the other session settings would not reliably apply.
-4. **Email:** the built-in mailer sends only to members of your Supabase team, two messages an
+4. **Encrypted, verified connection.** Supabase accepts unencrypted connections by default, and
+   node-postgres only uses TLS when the URL asks for it. In production the API refuses to start
+   unless `DATABASE_URL` has `sslmode=verify-full`.
+   1. Database Settings → SSL Configuration: turn on **Enforce SSL**, and download the CA
+      certificate.
+   2. Render → the service → Environment → **Secret Files**: add it as `supabase-ca.crt`. Docker
+      services see it at `/etc/secrets/supabase-ca.crt`.
+   3. Append `?sslmode=verify-full&sslrootcert=/etc/secrets/supabase-ca.crt` to `DATABASE_URL`.
+      Supabase signs its certificates with its own CA, so `verify-full` fails without `sslrootcert`.
+5. **Email:** the built-in mailer sends only to members of your Supabase team, two messages an
    hour. A public demo needs either custom SMTP (Authentication → Emails → SMTP; several providers
    have free tiers), or accounts you create by hand (Authentication → Users → Add user).
 
@@ -143,7 +152,8 @@ Some checks need a real browser and accounts, so they are manual:
    "
    ```
 
-   Expected: `{ timeout: '30s', jit: 'off' }` (the API's pool sends the timeout the same way;
+   For this check from your machine, point `sslrootcert` in the URL at your local copy of the CA
+   certificate. Expected: `{ timeout: '30s', jit: 'off' }` (the API's pool sends the timeout the same way;
    `jit` comes from the role, ADR-020).
 
 ## Running it

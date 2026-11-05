@@ -165,7 +165,8 @@ volume.
 
 The application processes run on the host during development (`npm run dev`) for fast reloads.
 The production image runs the migrations, then the API. To try it against local PostgreSQL, give it
-production-like settings (S3 storage and an AI provider are required in production):
+production-like settings (S3 storage, an AI provider and a `DATABASE_URL` with
+`sslmode=verify-full` are required in production):
 
 ```sh
 docker run --rm --network host --env-file <production-like env file> documind-api
@@ -276,42 +277,42 @@ Details, including the "what if" cases: [job queue](docs/processing/job-queue.md
 Validated at startup by `apps/api/src/config/app-config.ts`; an invalid value stops the process
 with a message naming the variable.
 
-| Variable                        | Default                                    | Used by                          | Description                                                              |
-| ------------------------------- | ------------------------------------------ | -------------------------------- | ------------------------------------------------------------------------ |
-| `NODE_ENV`                      | `development`                              | API, worker                      | `development`, `test` or `production`                                    |
-| `LOG_LEVEL`                     | `log`                                      | API, worker                      | Minimum level: `verbose`, `debug`, `log`, `warn`, `error`, `fatal`       |
-| `LOG_FORMAT`                    | `json`                                     | API, worker                      | `json` (structured) or `pretty` (local)                                  |
-| `PORT`                          | `3000`                                     | API, web dev proxy               | HTTP port of the API                                                     |
-| `CORS_ALLOWED_ORIGINS`          | empty                                      | API                              | Comma-separated bare origins; empty disables cross-origin access         |
-| `WORKER_POLL_INTERVAL_MS`       | `5000`                                     | Worker                           | Wait after an empty poll (100–60000)                                     |
-| `WORKER_IN_PROCESS`             | `false`                                    | API                              | `true`: the API process also runs the poll loop (free host, ADR-009)     |
-| `DATABASE_URL`                  | none (required)                            | API, worker, CLIs                | `postgres://` URL of the application database; contains credentials      |
-| `DATABASE_POOL_MAX`             | `10`                                       | API, worker                      | Connections per process (1–50)                                           |
-| `DATABASE_STATEMENT_TIMEOUT_MS` | `30000`                                    | API, worker                      | Server-side limit per statement (1000–300000)                            |
-| `TEST_DATABASE_URL`             | none                                       | Integration tests                | Database recreated by the test suite; name must end in `_test`           |
-| `SUPABASE_URL`                  | none (required)                            | API (validated in all processes) | Supabase project URL; https (http only for localhost outside production) |
-| `VITE_SUPABASE_URL`             | none (required)                            | Web (public)                     | Supabase project URL for the browser                                     |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | none (required)                            | Web (public)                     | Publishable/anon key; public by design                                   |
-| `VITE_API_URL`                  | empty (same origin)                        | Web build (public)               | API origin when it is on another host; `https://host`, no path           |
-| `STORAGE_DRIVER`                | `filesystem`                               | API, worker                      | `filesystem` (dev/tests; refused in production) or `s3` (R2)             |
-| `STORAGE_FILESYSTEM_ROOT`       | `.data/storage`                            | API, worker                      | Folder for the filesystem driver, relative to the working directory      |
-| `S3_ENDPOINT`                   | none                                       | API, worker (`s3` driver)        | e.g. `https://<account-id>.r2.cloudflarestorage.com`; https required     |
-| `S3_REGION`                     | `auto`                                     | API, worker (`s3` driver)        | `auto` for R2                                                            |
-| `S3_BUCKET`                     | none                                       | API, worker (`s3` driver)        | Private bucket name                                                      |
-| `S3_ACCESS_KEY_ID`              | none                                       | API, worker (`s3` driver)        | R2 API token key id                                                      |
-| `S3_SECRET_ACCESS_KEY`          | none                                       | API, worker (`s3` driver)        | Secret; server-side only, never logged                                   |
-| `AI_PROVIDER`                   | `ollama`                                   | API, worker                      | `ollama` or `cloudflare`; required in production                         |
-| `AI_TIMEOUT_MS`                 | `300000`                                   | API, worker                      | Per-request limit for the AI provider                                    |
-| `OLLAMA_BASE_URL`               | `http://localhost:11434`                   | API, worker (`ollama`)           | https required in production unless localhost                            |
-| `OLLAMA_MODEL`                  | `qwen2.5:3b`                               | API, worker (`ollama`)           | Must be pulled first (`npm run ai:up`)                                   |
-| `CLOUDFLARE_ACCOUNT_ID`         | none                                       | API, worker (`cloudflare`)       | 32-character account id                                                  |
-| `CLOUDFLARE_AI_API_TOKEN`       | none                                       | API, worker (`cloudflare`)       | Secret ("Workers AI: Read" only); server-side only, never logged         |
-| `CLOUDFLARE_AI_MODEL`           | `@cf/meta/llama-3.3-70b-instruct-fp8-fast` | API, worker (`cloudflare`)       | Must support JSON mode                                                   |
-| `POSTGRES_USER`                 | none                                       | Docker Compose                   | Local database user (required by Compose)                                |
-| `POSTGRES_PASSWORD`             | none                                       | Docker Compose                   | Local database password (required by Compose)                            |
-| `POSTGRES_DB`                   | none                                       | Docker Compose                   | Local database name (required by Compose)                                |
-| `POSTGRES_PORT`                 | `5432`                                     | Docker Compose                   | Host port, bound to 127.0.0.1                                            |
-| `OLLAMA_PORT`                   | `11434`                                    | Docker Compose (`ai` profile)    | Host port, bound to 127.0.0.1                                            |
+| Variable                        | Default                                    | Used by                          | Description                                                                |
+| ------------------------------- | ------------------------------------------ | -------------------------------- | -------------------------------------------------------------------------- |
+| `NODE_ENV`                      | `development`                              | API, worker                      | `development`, `test` or `production`                                      |
+| `LOG_LEVEL`                     | `log`                                      | API, worker                      | Minimum level: `verbose`, `debug`, `log`, `warn`, `error`, `fatal`         |
+| `LOG_FORMAT`                    | `json`                                     | API, worker                      | `json` (structured) or `pretty` (local)                                    |
+| `PORT`                          | `3000`                                     | API, web dev proxy               | HTTP port of the API                                                       |
+| `CORS_ALLOWED_ORIGINS`          | empty                                      | API                              | Comma-separated bare origins; empty disables cross-origin access           |
+| `WORKER_POLL_INTERVAL_MS`       | `5000`                                     | Worker                           | Wait after an empty poll (100–60000)                                       |
+| `WORKER_IN_PROCESS`             | `false`                                    | API                              | `true`: the API process also runs the poll loop (free host, ADR-009)       |
+| `DATABASE_URL`                  | none (required)                            | API, worker, CLIs                | `postgres://` URL; contains credentials. Production: `sslmode=verify-full` |
+| `DATABASE_POOL_MAX`             | `10`                                       | API, worker                      | Connections per process (1–50)                                             |
+| `DATABASE_STATEMENT_TIMEOUT_MS` | `30000`                                    | API, worker                      | Server-side limit per statement (1000–300000)                              |
+| `TEST_DATABASE_URL`             | none                                       | Integration tests                | Database recreated by the test suite; name must end in `_test`             |
+| `SUPABASE_URL`                  | none (required)                            | API (validated in all processes) | Supabase project URL; https (http only for localhost outside production)   |
+| `VITE_SUPABASE_URL`             | none (required)                            | Web (public)                     | Supabase project URL for the browser                                       |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | none (required)                            | Web (public)                     | Publishable/anon key; public by design                                     |
+| `VITE_API_URL`                  | empty (same origin)                        | Web build (public)               | API origin when it is on another host; `https://host`, no path             |
+| `STORAGE_DRIVER`                | `filesystem`                               | API, worker                      | `filesystem` (dev/tests; refused in production) or `s3` (R2)               |
+| `STORAGE_FILESYSTEM_ROOT`       | `.data/storage`                            | API, worker                      | Folder for the filesystem driver, relative to the working directory        |
+| `S3_ENDPOINT`                   | none                                       | API, worker (`s3` driver)        | e.g. `https://<account-id>.r2.cloudflarestorage.com`; https required       |
+| `S3_REGION`                     | `auto`                                     | API, worker (`s3` driver)        | `auto` for R2                                                              |
+| `S3_BUCKET`                     | none                                       | API, worker (`s3` driver)        | Private bucket name                                                        |
+| `S3_ACCESS_KEY_ID`              | none                                       | API, worker (`s3` driver)        | R2 API token key id                                                        |
+| `S3_SECRET_ACCESS_KEY`          | none                                       | API, worker (`s3` driver)        | Secret; server-side only, never logged                                     |
+| `AI_PROVIDER`                   | `ollama`                                   | API, worker                      | `ollama` or `cloudflare`; required in production                           |
+| `AI_TIMEOUT_MS`                 | `300000`                                   | API, worker                      | Per-request limit for the AI provider                                      |
+| `OLLAMA_BASE_URL`               | `http://localhost:11434`                   | API, worker (`ollama`)           | https required in production unless localhost                              |
+| `OLLAMA_MODEL`                  | `qwen2.5:3b`                               | API, worker (`ollama`)           | Must be pulled first (`npm run ai:up`)                                     |
+| `CLOUDFLARE_ACCOUNT_ID`         | none                                       | API, worker (`cloudflare`)       | 32-character account id                                                    |
+| `CLOUDFLARE_AI_API_TOKEN`       | none                                       | API, worker (`cloudflare`)       | Secret ("Workers AI: Read" only); server-side only, never logged           |
+| `CLOUDFLARE_AI_MODEL`           | `@cf/meta/llama-3.3-70b-instruct-fp8-fast` | API, worker (`cloudflare`)       | Must support JSON mode                                                     |
+| `POSTGRES_USER`                 | none                                       | Docker Compose                   | Local database user (required by Compose)                                  |
+| `POSTGRES_PASSWORD`             | none                                       | Docker Compose                   | Local database password (required by Compose)                              |
+| `POSTGRES_DB`                   | none                                       | Docker Compose                   | Local database name (required by Compose)                                  |
+| `POSTGRES_PORT`                 | `5432`                                     | Docker Compose                   | Host port, bound to 127.0.0.1                                              |
+| `OLLAMA_PORT`                   | `11434`                                    | Docker Compose (`ai` profile)    | Host port, bound to 127.0.0.1                                              |
 
 ## Security model
 
