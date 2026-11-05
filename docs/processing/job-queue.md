@@ -89,7 +89,7 @@ RETURNING *;
 | Method | Path                         | Result                                                                                               |
 | ------ | ---------------------------- | ---------------------------------------------------------------------------------------------------- |
 | GET    | `/api/v1/documents/:id/jobs` | The 20 most recent jobs, newest first: status, stage, attempts, `errorCode`, `requestId`, step times |
-| POST   | `/api/v1/documents/:id/jobs` | 202 with a new queued job, for a `failed` or `uploaded` document                                     |
+| POST   | `/api/v1/documents/:id/jobs` | 202 with a new queued job, for a `failed`, `rejected` or `uploaded` document                         |
 
 - **POST is idempotent.** For a document that is already queued or processing, it returns the
   active job.
@@ -147,7 +147,8 @@ RETURNING *;
   16 workers claimed 1,625 jobs a second in Phase 15
   ([performance review](../operations/performance-review.md)).
 - **Lease against slow CPUs:** with no heartbeat, a job must finish within its 15-minute lease. On
-  the free host (0.1 CPU) OCR takes about 86 s a page, so a 20-page scan would outlast it. The
+  the free host's limits OCR took about 46 s a page (Phase 16), so a 20-page scan (about 16 minutes)
+  would outlast it. The
   demo's single worker cannot be taken over mid-run, but several workers on slow CPUs would
   repeat each other's work.
 - **Coarse stages:** stages are `text_extraction` and `ai_extraction` only. Classification and

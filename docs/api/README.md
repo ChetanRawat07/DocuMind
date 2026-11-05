@@ -190,7 +190,7 @@ A **job** as returned by the API:
 | Method | Path                  | Response                                                                                                                                                                                            |
 | ------ | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GET    | `/documents/:id/jobs` | `200` `{ items: Job[] }`: the document's 20 most recent jobs                                                                                                                                        |
-| POST   | `/documents/:id/jobs` | `202` with the queued job: reprocesses a `failed` or `rejected` document. Returns the active job if one exists. `409` if in review or completed                                                     |
+| POST   | `/documents/:id/jobs` | `202` with the queued job: reprocesses a `failed` or `rejected` document (or one never queued). Returns the active job if one exists. `409` if in review or completed                               |
 | GET    | `/processing/jobs`    | `200` `{ items: (Job & { document: { id, originalFilename } })[] }`, newest first. `status` filter; `limit` 1–100, default 50                                                                       |
 | GET    | `/processing/summary` | `200` with the queue now (`queued`, `running`, `oldestQueuedAt`) and the last 7 days: `succeeded`, `failed`, `failuresByCode`, and `average`/`p95` of `processingMs`, `textExtractionMs` and `aiMs` |
 

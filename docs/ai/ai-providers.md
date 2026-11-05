@@ -167,4 +167,5 @@ These reduce the risk; none of them eliminates it. A test against the real local
 - The Cloudflare provider has been exercised for authentication failure only. A successful call
   needs real credentials.
 - Prompt-injection defenses lower the risk but do not remove it (see above).
-- No per-user or per-day budget guard yet beyond Cloudflare's own allocation (hardening phase).
+- The only AI budget guard is per user: 50 uploads and reprocessing requests a day (Phase 13). There
+  is no global daily cap below Cloudflare's own allocation.
