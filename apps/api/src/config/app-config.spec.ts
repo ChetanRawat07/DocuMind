@@ -136,6 +136,48 @@ describe('loadConfig', () => {
     ).toThrow(/SUPABASE_URL/);
   });
 
+  describe('database TLS in production', () => {
+    const PRODUCTION = {
+      ...REQUIRED,
+      NODE_ENV: 'production',
+      STORAGE_DRIVER: 's3',
+      S3_ENDPOINT: 'https://0123456789abcdef.r2.cloudflarestorage.com',
+      S3_BUCKET: 'documind-documents',
+      S3_ACCESS_KEY_ID: 'key-id',
+      S3_SECRET_ACCESS_KEY: 'secret',
+      AI_PROVIDER: 'ollama',
+    };
+
+    it.each(['', '?sslmode=require', '?sslmode=prefer', '?sslmode=no-verify', '?sslmode=disable'])(
+      'refuses a DATABASE_URL ending in "%s", without echoing it',
+      (suffix) => {
+        try {
+          loadConfig({ ...PRODUCTION, DATABASE_URL: `${DATABASE_URL}${suffix}` });
+          expect.unreachable();
+        } catch (error) {
+          expect(error).toMatchObject({
+            issues: [expect.stringMatching(/^DATABASE_URL: Must use sslmode=verify-full/)],
+          });
+          expect(String(error)).not.toContain('secret-password');
+        }
+      },
+    );
+
+    it('accepts verified TLS, with or without a private CA', () => {
+      for (const suffix of [
+        '?sslmode=verify-full',
+        '?sslmode=verify-full&sslrootcert=/etc/secrets/ca.crt',
+      ]) {
+        const url = `${DATABASE_URL}${suffix}`;
+        expect(loadConfig({ ...PRODUCTION, DATABASE_URL: url }).database.url).toBe(url);
+      }
+    });
+
+    it('leaves development connections alone', () => {
+      expect(loadConfig(REQUIRED).database.url).toBe(DATABASE_URL);
+    });
+  });
+
   describe('storage', () => {
     const S3 = {
       STORAGE_DRIVER: 's3',
@@ -214,6 +256,7 @@ describe('loadConfig', () => {
     // Production settings that pass every other check, so only the AI rules are under test.
     const PRODUCTION = {
       ...REQUIRED,
+      DATABASE_URL: `${DATABASE_URL}?sslmode=verify-full`,
       NODE_ENV: 'production',
       STORAGE_DRIVER: 's3',
       S3_ENDPOINT: 'https://0123456789abcdef.r2.cloudflarestorage.com',

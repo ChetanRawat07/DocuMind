@@ -215,6 +215,16 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
 
   const storage = storageConfigFrom(parsed);
   const ai = aiConfigFrom(parsed);
+  // Document text and query results cross the internet to the database. node-postgres uses no TLS
+  // unless asked, and Supabase accepts plain connections by default (docs/operations/deployment.md).
+  if (
+    parsed.NODE_ENV === 'production' &&
+    new URL(parsed.DATABASE_URL).searchParams.get('sslmode') !== 'verify-full'
+  ) {
+    throw new ConfigValidationError([
+      'DATABASE_URL: Must use sslmode=verify-full in production (with sslrootcert for a private CA)',
+    ]);
+  }
 
   const issuer = `${parsed.SUPABASE_URL}/auth/v1`;
   return {

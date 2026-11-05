@@ -41,6 +41,8 @@ services:
       - key: AI_PROVIDER
         value: cloudflare
       # Supabase session pooler (port 5432): Render has no IPv6, and the direct host is IPv6-only.
+      # Must end in ?sslmode=verify-full&sslrootcert=/etc/secrets/supabase-ca.crt, with the CA
+      # uploaded as a secret file (docs/operations/deployment.md, step 1).
       - key: DATABASE_URL
         sync: false
       - key: SUPABASE_URL
