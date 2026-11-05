@@ -60,26 +60,39 @@ jobs:
     name: API image starts and migrates
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_USER: documind
-          POSTGRES_PASSWORD: ci_only
-          POSTGRES_DB: documind
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd "pg_isready -U documind -d documind"
-          --health-interval 5s --health-timeout 3s --health-retries 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: docker build -t documind-api .
+      # Production requires verified TLS to the database (sslmode=verify-full), as with Supabase's
+      # own CA. A throwaway CA signs a certificate for 127.0.0.1, and only that CA is trusted.
+      - name: Start PostgreSQL with TLS from a throwaway CA
+        run: |
+          mkdir -p certs && cd certs
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=ci-ca -keyout ca.key -out ca.crt
+          openssl req -newkey rsa:2048 -nodes -subj /CN=127.0.0.1 -keyout server.key -out server.csr
+          openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 1 \
+            -extfile <(printf 'subjectAltName=IP:127.0.0.1') -out server.crt
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=other-ca -keyout other.key -out other-ca.crt
+          chmod 644 ca.crt other-ca.crt server.crt server.key
+          docker run -d --name postgres -p 127.0.0.1:5432:5432 -v "$PWD:/certs:ro" \
+            -e POSTGRES_USER=documind -e POSTGRES_PASSWORD=ci_only -e POSTGRES_DB=documind \
+            --entrypoint sh postgres:17-alpine -c '
+              install -o postgres -m 600 /certs/server.key /var/lib/postgresql/server.key
+              install -o postgres -m 644 /certs/server.crt /var/lib/postgresql/server.crt
+              exec docker-entrypoint.sh postgres -c ssl=on \
+                -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key'
+          for _ in $(seq 1 30); do
+            docker exec postgres pg_isready -h 127.0.0.1 -U documind -d documind && exit 0
+            sleep 2
+          done
+          docker logs postgres
+          exit 1
       # Production configuration with placeholder credentials: startup contacts only the database.
       - name: Start the image with production settings and the free instance's limits
         run: |
-          docker run -d --name api --network host --memory 512m --cpus 0.5 \
+          docker run -d --name api --network host --memory 512m --cpus 0.5 -v "$PWD/certs:/certs:ro" \
             -e NODE_ENV=production -e PORT=3000 -e WORKER_IN_PROCESS=true \
-            -e DATABASE_URL=postgres://documind:ci_only@127.0.0.1:5432/documind \
+            -e 'DATABASE_URL=postgres://documind:ci_only@127.0.0.1:5432/documind?sslmode=verify-full&sslrootcert=/certs/ca.crt' \
             -e SUPABASE_URL=https://abcdefghijklmnopqrst.supabase.co \
             -e CORS_ALLOWED_ORIGINS=https://documind.pages.dev \
             -e STORAGE_DRIVER=s3 -e S3_ENDPOINT=https://example.r2.cloudflarestorage.com \
@@ -96,16 +109,28 @@ jobs:
           done
           docker logs api
           exit 1
-      - name: Migrations ran, JIT is off for the role, and CORS admits only the web origin
+      - name: Migrations ran, TLS is verified, JIT is off, and CORS admits only the web origin
         run: |
           # Output is captured before grep: grep -q can exit early, failing the pipe under pipefail.
           logs=$(docker logs api 2>&1)
           grep -q '^Success: Up ' <<<"$logs"
+          # The same connection string the API uses: encrypted, and JIT off for the role.
           test "$(docker exec api node -e "
             const { Client } = require('pg');
             const c = new Client(process.env.DATABASE_URL);
-            c.connect().then(() => c.query('SHOW jit')).then((r) => { console.log(r.rows[0].jit); return c.end(); });
-          ")" = off
+            c.connect()
+              .then(() => c.query('SELECT s.ssl, current_setting(\\'jit\\') AS jit FROM pg_stat_ssl s WHERE s.pid = pg_backend_pid()'))
+              .then((r) => { console.log(r.rows[0].ssl, r.rows[0].jit); return c.end(); });
+          ")" = 'true off'
+          # A server certificate from another CA is refused.
+          if docker exec api node -e "
+            const { Client } = require('pg');
+            const c = new Client(process.env.DATABASE_URL.replace('/certs/ca.crt', '/certs/other-ca.crt'));
+            c.connect().then(() => c.end(), () => process.exit(1));
+          "; then
+            echo 'A certificate from an untrusted CA was accepted'
+            exit 1
+          fi
           preflight() {
             curl -s -o /dev/null -D - -X OPTIONS http://127.0.0.1:3000/api/v1/me \
               -H "Origin: $1" -H 'Access-Control-Request-Method: GET'
