@@ -26,7 +26,7 @@ export function ForgotPasswordPage() {
     <AuthCard
       title="Reset your password"
       footer={
-        <Link to="/login" className="font-medium text-brand-700 hover:underline">
+        <Link to="/login" viewTransition className="font-medium text-accent-fg hover:underline">
           Back to sign in
         </Link>
       }

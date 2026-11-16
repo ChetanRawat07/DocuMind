@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { formatCalendarDate } from '../../lib/format';
 import { fakeSession } from '../../test/fake-auth-client';
 import { testExtraction as extraction } from '../../test/extraction-fixture';
-import { renderApp, stubApi, testDocument } from '../../test/render-app';
+import { isReviewCountRequest, renderApp, stubApi, testDocument } from '../../test/render-app';
 
 const IN_REVIEW = testDocument({ status: 'needs_review' });
 const BASE = `/api/v1/documents/${IN_REVIEW.id}`;
@@ -115,6 +115,11 @@ const rowOf = (label: string) => {
   return row;
 };
 const approveButton = () => screen.getByRole('button', { name: 'Approve' });
+/** How often the sidebar's review badge has been loaded. */
+const reviewCountLoads = () =>
+  vi
+    .mocked(fetch)
+    .mock.calls.filter(([url]) => typeof url === 'string' && isReviewCountRequest(url)).length;
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -161,6 +166,30 @@ describe('ExtractionPanel', () => {
       method: 'PUT',
       body: { extractionId: extraction().id, action: 'confirm' },
     });
+  });
+
+  it('moves between fields with J and K, confirms with Enter and edits with E', async () => {
+    const { requests } = await renderReview();
+    const user = userEvent.setup();
+    const rows = within(fieldsList()).getAllByRole('listitem');
+    const vendorIndex = rows.indexOf(rowOf('Vendor'));
+
+    (rows[0] as HTMLElement).focus();
+    await user.keyboard('j'.repeat(vendorIndex) + 'kj');
+    expect(rowOf('Vendor')).toHaveFocus();
+
+    await user.keyboard('{Enter}');
+    await waitFor(() => {
+      expect(within(rowOf('Vendor')).getByText('Confirmed')).toBeInTheDocument();
+    });
+    expect(requests[0]?.body).toEqual({ extractionId: extraction().id, action: 'confirm' });
+
+    rowOf('Total').focus();
+    await user.keyboard('e');
+    expect(screen.getByLabelText('New value for Total')).toHaveFocus();
+    // Typing in the edit field is not taken for a shortcut.
+    await user.keyboard('jk');
+    expect(rowOf('Total')).not.toHaveFocus();
   });
 
   it('corrects an amount as a number and shows the extracted value beside it', async () => {
@@ -247,9 +276,14 @@ describe('ExtractionPanel', () => {
       expect(approveButton()).toBeEnabled();
     });
 
+    const badgeLoads = reviewCountLoads();
     await user.click(approveButton());
 
     expect(await screen.findByText(/^Approved on/)).toBeInTheDocument();
+    // The sidebar's review count refreshes after the decision.
+    await waitFor(() => {
+      expect(reviewCountLoads()).toBeGreaterThan(badgeLoads);
+    });
     expect(screen.getAllByText('Complete').length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: /^Confirm / })).toBeNull();
     expect(screen.queryByRole('button', { name: /^Edit / })).toBeNull();

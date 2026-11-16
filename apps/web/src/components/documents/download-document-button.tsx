@@ -45,13 +45,13 @@ export function DownloadDocumentButton({
   return (
     <span className="inline-flex items-center gap-2">
       {state === 'failed' ? (
-        <span role="alert" className="text-xs text-red-700">
+        <span role="alert" className="text-xs text-danger-fg">
           Download failed.
         </span>
       ) : null}
       <Button
         variant={variant}
-        disabled={state === 'downloading'}
+        loading={state === 'downloading'}
         aria-label={`Download ${document.originalFilename}`}
         onClick={() => void download()}
       >

@@ -18,13 +18,18 @@ import {
   DOCUMENT_TYPE_LABEL,
 } from '../../lib/document-labels';
 import { type DocumentView, hasDocumentFilters } from '../../lib/document-view';
+import { cx } from '../../lib/cx';
+import { INPUT_CLASS } from '../form-controls';
 import { Button } from '../ui/button';
 
 /** How long typing must pause before the search runs. */
 export const SEARCH_DEBOUNCE_MS = 300;
 
-const FIELD_CLASS =
-  'block h-9 w-full rounded-lg border border-gray-300 bg-white text-sm shadow-xs focus:border-brand-600 focus:ring-3 focus:ring-brand-600/20 focus:outline-none';
+const FIELD_CLASS = `${INPUT_CLASS} h-8`;
+
+/** A filter select as a compact chip; an active filter is tinted with the accent. */
+const CHIP_CLASS =
+  'block h-8 max-w-full rounded-lg border pr-8 pl-2.5 text-compact font-medium outline-2 -outline-offset-1 outline-transparent transition-[border-color,outline-color,background-color] duration-150 focus:outline-accent';
 
 type TypeFilter = NonNullable<DocumentView['type']>;
 const TYPE_OPTIONS: readonly [TypeFilter, string][] = [
@@ -47,9 +52,10 @@ function SelectField<T extends string>({
   onChange: (value: T | undefined) => void;
 }) {
   const id = useId();
+  // A compact chip: the label is for assistive technology; the chosen option says the rest.
   return (
-    <div className="min-w-0 space-y-1">
-      <label htmlFor={id} className="block text-xs font-medium text-gray-600">
+    <div className="min-w-0">
+      <label htmlFor={id} className="sr-only">
         {label}
       </label>
       <select
@@ -59,7 +65,12 @@ function SelectField<T extends string>({
           const selected = options.find(([option]) => option === event.target.value);
           onChange(selected?.[0]);
         }}
-        className={`${FIELD_CLASS} pr-8 pl-3`}
+        className={cx(
+          CHIP_CLASS,
+          value !== undefined && allLabel
+            ? 'border-accent bg-accent-subtle text-accent-fg'
+            : 'border-line-strong bg-surface text-fg-secondary hover:bg-surface-subtle',
+        )}
       >
         {allLabel ? <option value="">{allLabel}</option> : null}
         {options.map(([option, text]) => (
@@ -100,19 +111,19 @@ function SearchField({ value, onSearch }: { value: string; onSearch: (text: stri
   return (
     <form
       role="search"
-      className="min-w-0 space-y-1"
+      className="min-w-0 basis-full sm:basis-64"
       onSubmit={(event) => {
         event.preventDefault();
         onSearch(text);
       }}
     >
-      <label htmlFor={id} className="block text-xs font-medium text-gray-600">
+      <label htmlFor={id} className="sr-only">
         Search
       </label>
       <div className="relative">
         <Search
           aria-hidden="true"
-          className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-gray-400"
+          className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-fg-muted"
         />
         <input
           id={id}
@@ -124,7 +135,7 @@ function SearchField({ value, onSearch }: { value: string; onSearch: (text: stri
           onChange={(event) => {
             setText(event.target.value);
           }}
-          className={`${FIELD_CLASS} pr-3 pl-9 placeholder:text-gray-400`}
+          className={`${FIELD_CLASS} pr-3 pl-9`}
         />
       </div>
     </form>
@@ -143,10 +154,8 @@ export function DocumentFilters({
   onSearch: (text: string) => void;
 }): ReactNode {
   return (
-    <div className="grid grid-cols-2 items-end gap-3 border-b border-gray-100 px-5 py-4 md:grid-cols-6">
-      <div className="col-span-2">
-        <SearchField value={view.q ?? ''} onSearch={onSearch} />
-      </div>
+    <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3 sm:px-6">
+      <SearchField value={view.q ?? ''} onSearch={onSearch} />
       <SelectField<DocumentStatus>
         label="Status"
         value={view.status}
@@ -186,18 +195,15 @@ export function DocumentFilters({
         }}
       />
       {hasDocumentFilters(view) ? (
-        <div className="col-span-2 md:col-span-6">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="-ml-3"
-            onClick={() => {
-              onChange({ sort: view.sort });
-            }}
-          >
-            Clear filters
-          </Button>
-        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            onChange({ sort: view.sort });
+          }}
+        >
+          Clear filters
+        </Button>
       ) : null}
     </div>
   );

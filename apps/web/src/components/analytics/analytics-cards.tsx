@@ -7,7 +7,10 @@ import { EmptyState } from '../ui/feedback';
 
 const period = (analytics: Analytics) => `the last ${String(analytics.days)} days`;
 
-/** Documents processed per day, oldest first, with the window's first and last day under it. */
+/**
+ * Documents processed per day, oldest first, with the window's first and last
+ * day under it.
+ */
 export function ProcessingVolume({ analytics }: { analytics: Analytics }) {
   if (analytics.documents.processed === 0) {
     return (
@@ -30,7 +33,8 @@ export function ProcessingVolume({ analytics }: { analytics: Analytics }) {
         }))}
       />
       {first && last ? (
-        <div aria-hidden="true" className="mt-2 flex justify-between text-xs text-gray-500">
+        // pl-10 lines the dates up with the bars, past the y-axis labels.
+        <div aria-hidden="true" className="mt-2 flex justify-between pl-10 text-xs text-fg-muted">
           <span>{formatCalendarDate(first.date)}</span>
           <span>{formatCalendarDate(last.date)}</span>
         </div>
@@ -94,11 +98,11 @@ export function ReviewOutcomes({ analytics }: { analytics: Analytics }) {
   }
   return (
     <>
-      <p className="mb-4 text-sm text-gray-600">
+      <p className="mb-4 text-compact text-fg-secondary">
         {review.rate === null ? null : (
           <>
-            <span className="font-semibold text-gray-900">{formatPercent(review.rate)}</span> of
-            extractions needed a person.
+            <span className="font-medium text-fg tabular-nums">{formatPercent(review.rate)}</span>{' '}
+            of extractions needed a person.
           </>
         )}
       </p>

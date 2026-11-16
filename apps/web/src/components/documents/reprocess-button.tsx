@@ -3,6 +3,7 @@ import { RotateCcw } from 'lucide-react';
 import { useState } from 'react';
 import { SessionExpiredError } from '../../services/api-client';
 import { useApi } from '../../services/use-api';
+import { invalidateDocumentData } from '../../services/use-api-query';
 import { Button } from '../ui/button';
 
 /** Documents a user may send back to processing; the API refuses the others with 409. */
@@ -30,6 +31,7 @@ export function ReprocessButton({
     const path = `/documents/${encodeURIComponent(document.id)}`;
     try {
       await api.send('POST', `${path}/jobs`, {}, processingJobSchema);
+      invalidateDocumentData();
       onQueued(await api.get(path, documentSchema));
       setState('idle');
     } catch (error) {
@@ -40,11 +42,11 @@ export function ReprocessButton({
   return (
     <span className="inline-flex items-center gap-2">
       {state === 'failed' ? (
-        <span role="alert" className="text-xs text-red-700">
+        <span role="alert" className="text-xs text-danger-fg">
           Could not reprocess.
         </span>
       ) : null}
-      <Button variant="secondary" disabled={state === 'busy'} onClick={() => void reprocess()}>
+      <Button variant="secondary" loading={state === 'busy'} onClick={() => void reprocess()}>
         <RotateCcw aria-hidden="true" className="size-4" />
         {state === 'busy' ? 'Queuing…' : 'Reprocess'}
       </Button>

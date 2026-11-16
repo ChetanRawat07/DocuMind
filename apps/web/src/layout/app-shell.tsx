@@ -1,4 +1,4 @@
-import { currentUserSchema } from '@documind/shared';
+import { currentUserSchema, documentListResponseSchema } from '@documind/shared';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Outlet, useLocation } from 'react-router';
 import { CurrentUserContext, displayNameOf } from '../auth/current-user';
@@ -6,8 +6,20 @@ import { useAuth } from '../auth/use-auth';
 import { ErrorState, Spinner } from '../components/ui/feedback';
 import { useApiQuery } from '../services/use-api-query';
 import { MobileNav } from './mobile-nav';
+import { REVIEW_COUNT_LIMIT, REVIEW_COUNT_PATH } from './navigation';
 import { SidebarContent } from './sidebar';
 import { TopBar } from './top-bar';
+
+/**
+ * How many documents wait for review, for the sidebar badge: "100+" past one
+ * page, null at zero or while unknown. It refreshes whenever document data
+ * changes (a review decision, an upload, a delete): see invalidateDocumentData.
+ */
+function useReviewCount(): string | null {
+  const queue = useApiQuery(REVIEW_COUNT_PATH, documentListResponseSchema);
+  if (queue.status !== 'success' || queue.data.items.length === 0) return null;
+  return queue.data.nextCursor ? `${String(REVIEW_COUNT_LIMIT)}+` : String(queue.data.items.length);
+}
 
 /**
  * Signed-in layout: fixed sidebar (a drawer on narrow screens), sticky top
@@ -17,6 +29,7 @@ import { TopBar } from './top-bar';
 export function AppShell() {
   const { session } = useAuth();
   const me = useApiQuery('/me', currentUserSchema);
+  const reviewCount = useReviewCount();
   const [navOpen, setNavOpen] = useState(false);
   const navId = useId();
   const menuButton = useRef<HTMLButtonElement>(null);
@@ -32,7 +45,7 @@ export function AppShell() {
   useEffect(() => {
     if (previousPath.current !== pathname) {
       previousPath.current = pathname;
-      main.current?.focus();
+      main.current?.focus({ preventScroll: true });
     }
   }, [pathname]);
 
@@ -45,16 +58,16 @@ export function AppShell() {
       <div inert={navOpen} className="min-h-screen">
         <a
           href="#main-content"
-          className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:shadow-lg focus:outline-2 focus:outline-brand-600"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-lg focus:bg-surface focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:shadow-sm focus:outline-2 focus:outline-accent"
         >
           Skip to main content
         </a>
 
-        <aside className="fixed inset-y-0 left-0 hidden w-64 border-r border-gray-200 bg-white lg:block">
-          <SidebarContent />
+        <aside className="fixed inset-y-0 left-0 hidden w-60 border-r border-showcase-line bg-showcase [view-transition-name:sidebar] lg:block">
+          <SidebarContent userName={userName} reviewCount={reviewCount} />
         </aside>
 
-        <div className="lg:pl-64">
+        <div className="lg:pl-60">
           <TopBar
             navOpen={navOpen}
             navId={navId}
@@ -89,7 +102,15 @@ export function AppShell() {
         </div>
       </div>
 
-      {navOpen ? <MobileNav id={navId} onClose={closeNav} returnFocusTo={menuButton} /> : null}
+      {navOpen ? (
+        <MobileNav
+          id={navId}
+          onClose={closeNav}
+          returnFocusTo={menuButton}
+          userName={userName}
+          reviewCount={reviewCount}
+        />
+      ) : null}
     </>
   );
 }

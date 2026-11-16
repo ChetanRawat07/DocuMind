@@ -1,6 +1,7 @@
 import type { DocumentDto } from '@documind/shared';
 import { uploadProblemOf } from '../lib/upload-checks';
 import { ApiError, isAbortError, SessionExpiredError, type UploadOptions } from './api-client';
+import { invalidateDocumentData } from './use-api-query';
 
 export type UploadStatus = 'invalid' | 'queued' | 'uploading' | 'done' | 'failed' | 'cancelled';
 
@@ -133,6 +134,7 @@ export class UploadQueue {
         },
       });
       this.update(id, { status: 'done', progress: 1 });
+      invalidateDocumentData();
       this.onUploaded(document);
     } catch (error) {
       if (isAbortError(error)) {

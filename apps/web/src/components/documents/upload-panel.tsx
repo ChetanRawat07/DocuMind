@@ -24,19 +24,16 @@ function UploadRow({ item, queue }: { item: UploadItem; queue: UploadQueue }) {
   const canRetry = item.status === 'failed' || item.status === 'cancelled';
 
   return (
-    <li className="flex items-center gap-3 px-5 py-3">
-      <span
-        aria-hidden="true"
-        className="grid size-9 shrink-0 place-items-center rounded-lg bg-gray-100 text-[0.625rem] font-bold text-gray-600"
-      >
+    <li className="flex items-center gap-3 px-4 py-2 sm:px-6">
+      <span aria-hidden="true" className="w-10 shrink-0 text-xs font-medium text-fg-muted">
         {fileExtensionLabel(name)}
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-3">
-          <p title={name} className="truncate text-sm font-semibold text-gray-900">
+          <p title={name} className="truncate text-compact font-medium text-fg">
             {name}
           </p>
-          <p className="shrink-0 text-xs text-gray-500 tabular-nums">
+          <p className="shrink-0 text-xs text-fg-muted tabular-nums">
             {formatBytes(item.file.size)}
           </p>
         </div>
@@ -47,10 +44,10 @@ function UploadRow({ item, queue }: { item: UploadItem; queue: UploadQueue }) {
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={percent}
-            className="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-100"
+            className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-muted"
           >
             <div
-              className="h-full rounded-full bg-brand-600 transition-[width]"
+              className="h-full rounded-full bg-accent transition-[width] duration-150"
               style={{ width: `${percent}%` }}
             />
           </div>
@@ -59,10 +56,10 @@ function UploadRow({ item, queue }: { item: UploadItem; queue: UploadQueue }) {
           className={cx(
             'mt-1 flex items-start gap-1 text-xs',
             item.error
-              ? 'text-red-700'
+              ? 'text-danger-fg'
               : item.status === 'done'
-                ? 'text-green-700'
-                : 'text-gray-500',
+                ? 'text-success-fg'
+                : 'text-fg-muted',
           )}
         >
           {item.status === 'done' ? (
@@ -166,17 +163,15 @@ export function UploadPanel({ onUploaded }: { onUploaded: (document: DocumentDto
         }}
         onDrop={handleDrop}
         className={cx(
-          'm-5 flex flex-col items-center rounded-xl border-2 border-dashed px-6 py-8 text-center transition-colors',
-          dragging ? 'border-brand-500 bg-brand-50' : 'border-gray-200 bg-gray-50/60',
+          'm-4 flex flex-col items-center rounded-lg border border-dashed px-6 py-8 text-center transition-colors duration-150',
+          dragging ? 'border-accent bg-accent-subtle' : 'border-line-strong bg-surface-subtle',
         )}
       >
-        <span className="grid size-10 place-items-center rounded-full bg-brand-50 text-brand-600">
-          <FileUp aria-hidden="true" className="size-5" />
-        </span>
-        <p className="mt-3 text-sm font-semibold text-gray-900">
+        <FileUp aria-hidden="true" className="size-5 text-fg-muted" />
+        <p className="mt-3 text-sm font-medium text-fg">
           {dragging ? 'Drop to upload' : 'Drag files here'}
         </p>
-        <p className="mt-1 text-xs text-gray-500">
+        <p className="mt-1 text-xs text-fg-muted">
           {UPLOAD_TYPES_LABEL}, up to {UPLOAD_LIMIT_LABEL} each
         </p>
         <Button
@@ -204,9 +199,9 @@ export function UploadPanel({ onUploaded }: { onUploaded: (document: DocumentDto
       </div>
 
       {items.length > 0 ? (
-        <div className="border-t border-gray-100">
-          <div className="flex items-center justify-between px-5 pt-3">
-            <h3 className="text-xs font-semibold tracking-wide text-gray-500 uppercase">Uploads</h3>
+        <div className="border-t border-line">
+          <div className="flex items-center justify-between px-4 pt-2 sm:px-6">
+            <h3 className="text-xs font-medium text-fg-muted">Uploads</h3>
             {hasFinished ? (
               <Button
                 variant="ghost"
@@ -219,7 +214,7 @@ export function UploadPanel({ onUploaded }: { onUploaded: (document: DocumentDto
               </Button>
             ) : null}
           </div>
-          <ul aria-label="Uploads" className="divide-y divide-gray-100">
+          <ul aria-label="Uploads" className="divide-y divide-line-subtle">
             {items.map((item) => (
               <UploadRow key={item.id} item={item} queue={queue} />
             ))}

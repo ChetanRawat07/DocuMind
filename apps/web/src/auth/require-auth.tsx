@@ -1,16 +1,15 @@
-import type { ReactNode } from 'react';
-import { Navigate, useLocation } from 'react-router';
+import { Fragment, type ReactNode } from 'react';
+import { Navigate } from 'react-router';
 import { Spinner } from '../components/ui/feedback';
 import { useAuth } from './use-auth';
 
 /**
  * Renders children only for a signed-in user; otherwise redirects to the
- * login page, remembering where the user was going. This is a UX boundary,
+ * login page, and the next sign-in opens the dashboard. This is a UX boundary,
  * not a security one: the API rejects unauthenticated requests on its own.
  */
 export function RequireAuth({ children }: { children: ReactNode }) {
-  const { status } = useAuth();
-  const location = useLocation();
+  const { status, session } = useAuth();
 
   if (status === 'loading') {
     return (
@@ -20,8 +19,8 @@ export function RequireAuth({ children }: { children: ReactNode }) {
     );
   }
   if (status === 'signed_out') {
-    const from = `${location.pathname}${location.search}`;
-    return <Navigate to="/login" replace state={{ from }} />;
+    return <Navigate to="/login" replace />;
   }
-  return children;
+  // Keyed by user: another account signing in (in another tab) remounts every page, so none keeps the last user's data.
+  return <Fragment key={session?.user.id}>{children}</Fragment>;
 }

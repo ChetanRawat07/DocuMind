@@ -5,17 +5,13 @@ import { DocumentTable } from '../components/documents/document-table';
 import { LoadMore } from '../components/documents/load-more';
 import { buttonClasses } from '../components/ui/button-styles';
 import { Card, CardHeader } from '../components/ui/card';
-import { EmptyState, ErrorState, Spinner } from '../components/ui/feedback';
+import { EmptyState, ErrorState, SkeletonRows } from '../components/ui/feedback';
 import { PageHeader } from '../components/ui/page-header';
 import { NAV_ITEMS } from '../layout/navigation';
-import type { DocumentView } from '../lib/document-view';
+import { useDelayedLoading } from '../lib/delayed-loading';
 import { documentDetailPath } from '../lib/document-view';
+import { REVIEW_PAGE_SIZE, REVIEW_QUEUE } from '../services/page-queries';
 import { useDocumentList } from '../services/use-document-list';
-
-export const REVIEW_PAGE_SIZE = 20;
-
-/** Oldest first: whatever has waited longest is reviewed next. */
-const REVIEW_QUEUE: DocumentView = { status: 'needs_review', sort: 'oldest' };
 
 /**
  * Documents whose extraction needs a human check. Each opens on its detail
@@ -25,9 +21,13 @@ export function ReviewPage() {
   const [now] = useState(() => new Date());
   const list = useDocumentList(REVIEW_QUEUE, REVIEW_PAGE_SIZE);
 
+  const load = useDelayedLoading(list.status === 'loading');
+
   let body;
-  if (list.status === 'loading') {
-    body = <Spinner label="Loading the review queue…" className="px-5 py-10" />;
+  if (load.skeleton || list.status === 'loading') {
+    body = (
+      <SkeletonRows label="Loading the review queue…" stacked className={load.skeletonClass} />
+    );
   } else if (list.status === 'error') {
     body = (
       <ErrorState
@@ -54,6 +54,7 @@ export function ReviewPage() {
           renderActions={(document) => (
             <Link
               to={documentDetailPath(document.id)}
+              viewTransition
               className={buttonClasses('secondary', 'sm')}
               aria-label={`Review ${document.originalFilename}`}
             >
@@ -69,13 +70,13 @@ export function ReviewPage() {
   return (
     <>
       <PageHeader title={NAV_ITEMS.review.label} description={NAV_ITEMS.review.description} />
-      <Card className="overflow-hidden">
+      <Card className="overflow-clip">
         <CardHeader
           title="Waiting for review"
           description="Oldest first"
-          className="border-b border-gray-100 px-5 py-4"
+          className="border-b border-line px-4 py-3 sm:px-6"
         />
-        {body}
+        {load.skeleton ? body : <div className={load.revealClass}>{body}</div>}
       </Card>
     </>
   );

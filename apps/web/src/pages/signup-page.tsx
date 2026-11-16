@@ -1,10 +1,47 @@
-import { type SubmitEvent, useState } from 'react';
+import { type SubmitEvent, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router';
 import { useAuth } from '../auth/use-auth';
 import { signUpErrorMessage } from '../auth/auth-errors';
-import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '../auth/password-policy';
+import {
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  PASSWORD_STRENGTH_LABELS,
+  passwordStrength,
+} from '../auth/password-policy';
 import { AuthCard } from '../components/auth-card';
 import { FormAlert, SubmitButton, TextField } from '../components/form-controls';
+import { cx } from '../lib/cx';
+import { afterMotion, nudge } from '../lib/motion';
+
+/** Four bars and a word; shown once something is typed. */
+function PasswordStrength({ password }: { password: string }) {
+  if (!password) return null;
+  const strength = passwordStrength(password);
+  return (
+    <div className="flex items-center gap-3">
+      <div aria-hidden="true" className="grid flex-1 grid-cols-4 gap-1">
+        {[1, 2, 3, 4].map((bar) => (
+          <span
+            key={bar}
+            className={cx(
+              'h-1 rounded-full transition-colors duration-150',
+              bar > strength
+                ? 'bg-surface-muted'
+                : strength === 1
+                  ? 'bg-danger-fg'
+                  : strength === 2
+                    ? 'bg-warning-fg'
+                    : 'bg-success-fg',
+            )}
+          />
+        ))}
+      </div>
+      <p className="w-28 text-right text-xs text-fg-muted">
+        Strength: {PASSWORD_STRENGTH_LABELS[strength]}
+      </p>
+    </div>
+  );
+}
 
 export function SignupPage() {
   const { client, status } = useAuth();
@@ -16,8 +53,11 @@ export function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const passwordInput = useRef<HTMLInputElement>(null);
 
-  if (status === 'signed_in') {
+  // While a submit is in flight or the card fades out, this page navigates itself.
+  if (status === 'signed_in' && !busy && !leaving) {
     return <Navigate to="/" replace />;
   }
 
@@ -34,16 +74,20 @@ export function SignupPage() {
         emailRedirectTo: `${window.location.origin}/login`,
       },
     });
-    setBusy(false);
     if (result.error) {
+      setBusy(false);
       setError(signUpErrorMessage(result.error));
+      nudge(passwordInput.current);
       return;
     }
     // With email confirmation on, Supabase returns no session (and the same
     // response for an already registered email, so it cannot be probed).
     if (result.data.session) {
+      setLeaving(true);
+      await afterMotion(150);
       await navigate('/', { replace: true });
     } else {
+      setBusy(false);
       setAwaitingConfirmation(true);
     }
   }
@@ -55,7 +99,7 @@ export function SignupPage() {
           We sent a confirmation link to {email}. Open it to activate your account, then sign in.
         </FormAlert>
         <p className="mt-4 text-center text-sm">
-          <Link to="/login" className="font-medium text-brand-700 hover:underline">
+          <Link to="/login" viewTransition className="font-medium text-accent-fg hover:underline">
             Back to sign in
           </Link>
         </p>
@@ -66,10 +110,11 @@ export function SignupPage() {
   return (
     <AuthCard
       title="Create your account"
+      leaving={leaving}
       footer={
         <>
           Already registered?{' '}
-          <Link to="/login" className="font-medium text-brand-700 hover:underline">
+          <Link to="/login" viewTransition className="font-medium text-accent-fg hover:underline">
             Sign in
           </Link>
         </>
@@ -105,6 +150,7 @@ export function SignupPage() {
         <TextField
           label="Password"
           type="password"
+          ref={passwordInput}
           autoComplete="new-password"
           required
           minLength={PASSWORD_MIN_LENGTH}
@@ -115,6 +161,7 @@ export function SignupPage() {
             setPassword(event.target.value);
           }}
         />
+        <PasswordStrength password={password} />
         <SubmitButton busy={busy}>{busy ? 'Creating account…' : 'Create account'}</SubmitButton>
       </form>
     </AuthCard>

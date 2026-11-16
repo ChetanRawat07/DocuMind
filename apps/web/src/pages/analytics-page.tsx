@@ -11,13 +11,14 @@ import {
   ProcessingVolume,
   ReviewOutcomes,
 } from '../components/analytics/analytics-cards';
+import { SEGMENTED_GROUP, segmentClasses } from '../components/ui/button-styles';
 import { Card, CardHeader } from '../components/ui/card';
-import { ErrorState, Spinner } from '../components/ui/feedback';
+import { ErrorState, Skeleton } from '../components/ui/feedback';
 import { PageHeader } from '../components/ui/page-header';
-import { StatCard } from '../components/ui/stat-card';
+import { StatCard, StatGroup, StatGroupSkeleton } from '../components/ui/stat-card';
 import { NAV_ITEMS } from '../layout/navigation';
 import { analyticsPath, correctionRateKpi } from '../lib/analytics-view';
-import { cx } from '../lib/cx';
+import { useDelayedLoading } from '../lib/delayed-loading';
 import { formatDuration, formatPercent } from '../lib/format';
 import { useApiQuery } from '../services/use-api-query';
 
@@ -39,10 +40,25 @@ export function AnalyticsPage() {
   const [params, setParams] = useSearchParams();
   const days = rangeFrom(params);
   const analytics = useApiQuery(analyticsPath(days), analyticsSchema);
+  const load = useDelayedLoading(analytics.status === 'loading');
 
   let body;
-  if (analytics.status === 'loading') {
-    body = <Spinner label="Loading analytics…" className="py-10" />;
+  if (load.skeleton || analytics.status === 'loading') {
+    // The metrics and the volume chart with its header and date labels, at their loaded size.
+    body = (
+      <div className={load.skeletonClass}>
+        <StatGroupSkeleton
+          label="Loading analytics…"
+          count={5}
+          className="grid-cols-2 xl:grid-cols-5 [&>:last-child]:col-span-2 xl:[&>:last-child]:col-span-1"
+        />
+        <Card aria-hidden="true" className="mt-4 p-4 sm:p-6">
+          <CardHeader title="Processing volume" description="Documents processed per day" />
+          <Skeleton className="mt-4 h-48" />
+          <div className="mt-2 h-4" />
+        </Card>
+      </div>
+    );
   } else if (analytics.status === 'error') {
     body = (
       <Card>
@@ -59,9 +75,10 @@ export function AnalyticsPage() {
     const corrections = correctionRateKpi(data);
     body = (
       <>
-        <section
+        <StatGroup
           aria-label="Key metrics"
-          className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-5"
+          // Five metrics: the last one spans the row until all five fit on one line.
+          className="grid-cols-2 xl:grid-cols-5 [&>:last-child]:col-span-2 xl:[&>:last-child]:col-span-1"
         >
           <StatCard
             label="Processed"
@@ -90,9 +107,9 @@ export function AnalyticsPage() {
             }
           />
           <StatCard label="Correction rate" value={corrections.value} hint={corrections.hint} />
-        </section>
+        </StatGroup>
 
-        <Card className="mt-4 p-5">
+        <Card className="mt-4 p-4 sm:p-6">
           <CardHeader title="Processing volume" description="Documents processed per day" />
           <div className="mt-4">
             <ProcessingVolume analytics={data} />
@@ -100,13 +117,13 @@ export function AnalyticsPage() {
         </Card>
 
         <div className="mt-4 grid gap-4 lg:grid-cols-3">
-          <Card className="p-5">
+          <Card className="p-4 sm:p-6">
             <CardHeader title="Document types" description="Documents processed" />
             <div className="mt-4">
               <DocumentTypes analytics={data} />
             </div>
           </Card>
-          <Card className="p-5">
+          <Card className="p-4 sm:p-6">
             <CardHeader
               title="Extraction confidence"
               description="Lowest score of each extraction: a review signal, not accuracy"
@@ -115,14 +132,14 @@ export function AnalyticsPage() {
               <ConfidenceDistribution analytics={data} />
             </div>
           </Card>
-          <Card className="p-5">
+          <Card className="p-4 sm:p-6">
             <CardHeader title="Review" description="What happened to each extraction" />
             <div className="mt-4">
               <ReviewOutcomes analytics={data} />
             </div>
           </Card>
         </div>
-        <p className="mt-4 text-xs text-gray-500">
+        <p className="mt-4 text-xs text-fg-muted">
           Counted by when processing finished, in {data.timezone}. The correction rate covers values
           a person checked; automatically completed documents are not reviewed.
         </p>
@@ -136,19 +153,18 @@ export function AnalyticsPage() {
         title={NAV_ITEMS.analytics.label}
         description={NAV_ITEMS.analytics.description}
         actions={
-          <div role="group" aria-label="Time range" className="flex gap-1">
+          <div role="group" aria-label="Time range" className={SEGMENTED_GROUP}>
             {ANALYTICS_RANGES.map((range) => (
               <button
                 key={range}
                 type="button"
                 aria-pressed={days === range}
                 onClick={() => {
-                  setParams(range === DEFAULT_ANALYTICS_RANGE ? {} : { days: String(range) });
+                  setParams(range === DEFAULT_ANALYTICS_RANGE ? {} : { days: String(range) }, {
+                    preventScrollReset: true,
+                  });
                 }}
-                className={cx(
-                  'rounded-md px-3 py-1.5 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600',
-                  days === range ? 'bg-brand-50 text-brand-700' : 'text-gray-600 hover:bg-gray-100',
-                )}
+                className={segmentClasses(days === range)}
               >
                 {range} days
               </button>
@@ -156,7 +172,7 @@ export function AnalyticsPage() {
           </div>
         }
       />
-      {body}
+      {load.skeleton ? body : <div className={load.revealClass}>{body}</div>}
     </>
   );
 }

@@ -1,10 +1,12 @@
 import type { Analytics, CurrentUser, DocumentDto } from '@documind/shared';
 import type { Session } from '@supabase/supabase-js';
 import { render } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { createMemoryRouter } from 'react-router';
+import { RouterProvider } from 'react-router/dom';
 import { vi } from 'vitest';
-import { App } from '../App';
+import { routes } from '../App';
 import { AuthProvider } from '../auth/auth-context';
+import { REVIEW_COUNT_PATH } from '../layout/navigation';
 import { createFakeAuthClient } from './fake-auth-client';
 
 export const TEST_USER: CurrentUser = {
@@ -90,18 +92,28 @@ export function stubApi(
   return fetchMock;
 }
 
-/** Renders the whole app at `path` (which may carry a query string) with a fake Supabase client holding `session`. */
+/**
+ * Renders the whole app at `path` (which may carry a query string) with a
+ * fake Supabase client holding `session`, in the same data router as
+ * main.tsx. Returns the fake client and the router, for Back and Forward.
+ */
 export function renderApp(path: string, session: Session | null = null, state?: unknown) {
   const fake = createFakeAuthClient(session);
   const { pathname, search, hash } = new URL(path, 'http://localhost');
+  const router = createMemoryRouter(routes, {
+    initialEntries: [{ pathname, search, hash, state }],
+  });
   render(
     <AuthProvider client={fake.client}>
-      <MemoryRouter initialEntries={[{ pathname, search, hash, state }]}>
-        <App />
-      </MemoryRouter>
+      <RouterProvider router={router} />
     </AuthProvider>,
   );
-  return fake;
+  return { ...fake, router };
+}
+
+/** True for the app shell's request for the review badge, which list tests leave alone. */
+export function isReviewCountRequest(url: string): boolean {
+  return url === `/api/v1${REVIEW_COUNT_PATH}`;
 }
 
 /** An API error in the shared envelope. */

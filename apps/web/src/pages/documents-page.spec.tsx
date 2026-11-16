@@ -3,8 +3,14 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fakeSession } from '../test/fake-auth-client';
 import { stubXhr, waitForRequest } from '../test/fake-xhr';
-import { apiErrorResponse, renderApp, stubApi, testDocument } from '../test/render-app';
-import { DOCUMENTS_PAGE_SIZE } from './documents-page';
+import {
+  apiErrorResponse,
+  isReviewCountRequest,
+  renderApp,
+  stubApi,
+  testDocument,
+} from '../test/render-app';
+import { DOCUMENTS_PAGE_SIZE } from '../services/page-queries';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -180,7 +186,7 @@ describe('DocumentsPage', () => {
     it('shows an error with retry when the list cannot load', async () => {
       let failures = 1;
       await renderDocuments((url) => {
-        if (url.startsWith('/api/v1/documents') && failures > 0) {
+        if (url.startsWith('/api/v1/documents') && !isReviewCountRequest(url) && failures > 0) {
           failures -= 1;
           return apiErrorResponse(503);
         }
@@ -263,7 +269,7 @@ describe('DocumentsPage', () => {
     const listCalls = (fetchMock: Awaited<ReturnType<typeof renderDocuments>>['fetchMock']) =>
       fetchMock.mock.calls
         .map(([url]) => url)
-        .filter((url) => url.startsWith('/api/v1/documents?'));
+        .filter((url) => url.startsWith('/api/v1/documents?') && !isReviewCountRequest(url));
 
     it('searches once typing pauses', async () => {
       const { fetchMock } = await renderDocuments();

@@ -10,6 +10,18 @@ async function findDashboard() {
   return screen.findByRole('heading', { level: 1, name: /, Ada$/ });
 }
 
+/** Signs in through the login form, with the fake client accepting the password. */
+async function signIn(fake: ReturnType<typeof renderApp>) {
+  fake.mocks.signInWithPassword.mockImplementation(() => {
+    fake.emit('SIGNED_IN', fakeSession());
+    return Promise.resolve({ data: {}, error: null });
+  });
+  const user = userEvent.setup();
+  await user.type(screen.getByLabelText('Work email'), 'ada@example.test');
+  await user.type(screen.getByLabelText('Password'), 'correct horse battery');
+  await user.click(screen.getByRole('button', { name: 'Sign in' }));
+}
+
 describe('App routing and authentication flows', () => {
   beforeEach(() => {
     stubApi();
@@ -22,7 +34,9 @@ describe('App routing and authentication flows', () => {
   it('sends a signed-out visitor from a protected page to the login page', async () => {
     renderApp('/');
 
-    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'Good to see you again.' }),
+    ).toBeInTheDocument();
   });
 
   it('shows the workspace to a signed-in user and loads their identity from the API', async () => {
@@ -32,15 +46,15 @@ describe('App routing and authentication flows', () => {
     expect(await screen.findByText('No documents yet')).toBeInTheDocument();
   });
 
-  it('signs in and returns the user to the page they wanted', async () => {
-    const fake = renderApp('/login', null, { from: '/' });
+  it('signs in and opens the dashboard', async () => {
+    const fake = renderApp('/login');
     fake.mocks.signInWithPassword.mockImplementation(() => {
       fake.emit('SIGNED_IN', fakeSession());
       return Promise.resolve({ data: {}, error: null });
     });
     const user = userEvent.setup();
 
-    await user.type(await screen.findByLabelText('Email'), 'ada@example.test');
+    await user.type(await screen.findByLabelText('Work email'), 'ada@example.test');
     await user.type(screen.getByLabelText('Password'), 'correct horse battery');
     await user.click(screen.getByRole('button', { name: 'Sign in' }));
 
@@ -51,10 +65,13 @@ describe('App routing and authentication flows', () => {
     });
   });
 
-  it('ignores an off-site redirect target after sign-in', async () => {
-    renderApp('/login', fakeSession(), { from: '//evil.test' });
+  it('opens the dashboard, not the page the session ended on, after sign-in', async () => {
+    const fake = renderApp('/settings');
+    await screen.findByRole('heading', { name: 'Good to see you again.' });
 
+    await signIn(fake);
     expect(await findDashboard()).toBeInTheDocument();
+    expect(fake.router.state.location.pathname).toBe('/');
   });
 
   it('shows one generic message for wrong credentials', async () => {
@@ -65,11 +82,22 @@ describe('App routing and authentication flows', () => {
     });
     const user = userEvent.setup();
 
-    await user.type(await screen.findByLabelText('Email'), 'ada@example.test');
+    await user.type(await screen.findByLabelText('Work email'), 'ada@example.test');
     await user.type(screen.getByLabelText('Password'), 'wrong password');
     await user.click(screen.getByRole('button', { name: 'Sign in' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Invalid email or password.');
+  });
+
+  it('shows and hides the password on the login page', async () => {
+    renderApp('/login');
+    const user = userEvent.setup();
+    const password = await screen.findByLabelText('Password');
+
+    await user.click(screen.getByRole('button', { name: 'Show password' }));
+    expect(password).toHaveAttribute('type', 'text');
+    await user.click(screen.getByRole('button', { name: 'Hide password' }));
+    expect(password).toHaveAttribute('type', 'password');
   });
 
   it('returns to the login page after signing out', async () => {
@@ -80,7 +108,35 @@ describe('App routing and authentication flows', () => {
     await user.click(screen.getByRole('button', { name: 'Sign out' }));
 
     expect(fake.mocks.signOut).toHaveBeenCalledWith({ scope: 'local' });
-    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'Good to see you again.' }),
+    ).toBeInTheDocument();
+    expect(fake.router.state.location.state).toBeNull();
+  });
+
+  it('opens the dashboard on the next sign-in after signing out from settings', async () => {
+    const fake = renderApp('/settings', fakeSession());
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Sign out' }));
+    await screen.findByRole('heading', { name: 'Good to see you again.' });
+    expect(fake.router.state.location).toMatchObject({ pathname: '/login', state: null });
+
+    await signIn(fake);
+    expect(await findDashboard()).toBeInTheDocument();
+  });
+
+  it('opens the dashboard on sign-in after the session expires on another page', async () => {
+    const fake = renderApp('/settings', fakeSession());
+    await screen.findByRole('heading', { level: 1, name: 'Settings' });
+
+    act(() => {
+      fake.emit('SIGNED_OUT', null);
+    });
+    await screen.findByRole('heading', { name: 'Good to see you again.' });
+
+    await signIn(fake);
+    expect(await findDashboard()).toBeInTheDocument();
   });
 
   it('returns to the login page when the session ends elsewhere (expiry, other tab)', async () => {
@@ -91,7 +147,9 @@ describe('App routing and authentication flows', () => {
       fake.emit('SIGNED_OUT', null);
     });
 
-    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'Good to see you again.' }),
+    ).toBeInTheDocument();
   });
 
   it('asks the user to confirm their email when sign-up returns no session', async () => {

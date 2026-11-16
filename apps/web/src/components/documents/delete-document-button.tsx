@@ -3,6 +3,7 @@ import { Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { ApiError, SessionExpiredError } from '../../services/api-client';
 import { useApi } from '../../services/use-api';
+import { invalidateDocumentData } from '../../services/use-api-query';
 import { Button } from '../ui/button';
 
 type DeleteState = 'idle' | 'confirming' | 'deleting' | 'failed';
@@ -29,9 +30,11 @@ export function DeleteDocumentButton({
     setState('deleting');
     try {
       await api.delete(`/documents/${document.id}`);
+      invalidateDocumentData();
       onDeleted(document.id);
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) {
+        invalidateDocumentData();
         onDeleted(document.id);
       } else if (!(error instanceof SessionExpiredError)) {
         setState('failed');
@@ -56,18 +59,18 @@ export function DeleteDocumentButton({
   }
 
   return (
-    <span className="inline-flex items-center gap-2">
+    <span data-keep-visible className="inline-flex items-center gap-2">
       {state === 'failed' ? (
-        <span role="alert" className="text-xs text-red-700">
+        <span role="alert" className="text-xs text-danger-fg">
           Could not delete.
         </span>
       ) : (
-        <span className="text-xs text-gray-600">Delete permanently?</span>
+        <span className="text-xs text-fg-secondary">Delete permanently?</span>
       )}
       <Button
         size="sm"
-        className="bg-red-600 hover:bg-red-700"
-        disabled={state === 'deleting'}
+        variant="danger"
+        loading={state === 'deleting'}
         aria-label={`Confirm deleting ${document.originalFilename}`}
         // Moving focus here lets keyboard users confirm or cancel at once.
         autoFocus

@@ -5,16 +5,16 @@ import { Button } from '../ui/button';
 export function LoadMore({ list }: { list: Extract<DocumentListState, { status: 'success' }> }) {
   if (!list.hasMore && list.moreStatus !== 'error') return null;
   return (
-    <div className="flex flex-col items-center gap-2 border-t border-gray-100 px-5 py-4">
+    <div className="flex flex-col items-center gap-2 border-t border-line px-4 py-3 sm:px-6">
       {list.moreStatus === 'error' ? (
-        <p role="alert" className="text-xs text-red-700">
+        <p role="alert" className="text-xs text-danger-fg">
           Could not load more documents.
         </p>
       ) : null}
       <Button
         variant="secondary"
         size="sm"
-        disabled={list.moreStatus === 'loading'}
+        loading={list.moreStatus === 'loading'}
         onClick={() => void list.loadMore()}
       >
         {list.moreStatus === 'loading'

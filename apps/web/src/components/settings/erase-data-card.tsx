@@ -1,8 +1,9 @@
 import { Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import { useAuth } from '../../auth/use-auth';
+import { useSignOut } from '../../auth/use-sign-out';
 import { SessionExpiredError } from '../../services/api-client';
 import { useApi } from '../../services/use-api';
+import { invalidateApiCache } from '../../services/use-api-query';
 import { FormAlert, TextField } from '../form-controls';
 import { Button } from '../ui/button';
 import { Card, CardHeader } from '../ui/card';
@@ -16,7 +17,7 @@ export const ERASE_CONFIRMATION = 'DELETE';
  */
 export function EraseDataCard() {
   const api = useApi();
-  const { client } = useAuth();
+  const signOut = useSignOut();
   const [confirmation, setConfirmation] = useState('');
   const [state, setState] = useState<'idle' | 'erasing' | 'failed'>('idle');
 
@@ -25,20 +26,22 @@ export function EraseDataCard() {
     setState('erasing');
     try {
       await api.delete('/me');
-      await client.signOut({ scope: 'local' });
+      await signOut();
+      invalidateApiCache();
     } catch (error) {
       if (!(error instanceof SessionExpiredError)) setState('failed');
     }
   }
 
+  // `!`: Card sets its own border colour, which would otherwise win.
   return (
-    <Card className="border-red-200 p-5">
+    <Card className="border-danger-line! p-4 sm:p-6">
       <CardHeader
         title="Delete all my data"
         description="Permanently deletes every document, its file, extracted data and reviews, and your profile. Your sign-in account stays; signing in again starts empty. The activity history keeps entries without document content."
       />
       <form
-        className="mt-4 space-y-3"
+        className="mt-4 max-w-sm space-y-3"
         onSubmit={(event) => {
           event.preventDefault();
           void erase();
@@ -57,8 +60,9 @@ export function EraseDataCard() {
         ) : null}
         <Button
           type="submit"
-          className="bg-red-600 hover:bg-red-700"
-          disabled={confirmation !== ERASE_CONFIRMATION || state === 'erasing'}
+          variant="danger"
+          loading={state === 'erasing'}
+          disabled={confirmation !== ERASE_CONFIRMATION}
         >
           <Trash2 aria-hidden="true" className="size-4" />
           {state === 'erasing' ? 'Deleting…' : 'Delete all my data'}

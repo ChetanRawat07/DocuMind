@@ -2,7 +2,13 @@ import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fakeSession } from '../test/fake-auth-client';
-import { apiErrorResponse, renderApp, stubApi } from '../test/render-app';
+import {
+  apiErrorResponse,
+  isReviewCountRequest,
+  renderApp,
+  stubApi,
+  testDocument,
+} from '../test/render-app';
 import { NAV_ITEMS } from './navigation';
 
 afterEach(() => {
@@ -39,6 +45,36 @@ describe('AppShell', () => {
     expect(within(nav).getAllByRole('link', { current: 'page' })).toEqual([
       within(nav).getByRole('link', { name: 'Documents' }),
     ]);
+  });
+
+  it('counts the documents waiting for review beside the Review link', async () => {
+    stubApi((url) =>
+      isReviewCountRequest(url)
+        ? Response.json({
+            items: ['d1', 'd2', 'd3'].map((suffix) =>
+              testDocument({
+                id: `00000000-0000-4000-8000-0000000000${suffix}`,
+                status: 'needs_review',
+              }),
+            ),
+            nextCursor: null,
+          })
+        : undefined,
+    );
+    renderApp('/', fakeSession());
+
+    const nav = await screen.findByRole('navigation', { name: 'Main' });
+    expect(await within(nav).findByRole('link', { name: 'Review, 3 waiting' })).toBeInTheDocument();
+  });
+
+  it('opens the documents list with a search from the top bar', async () => {
+    await renderShell('/');
+    const user = userEvent.setup();
+
+    await user.type(screen.getByRole('searchbox', { name: 'Search documents' }), 'acme{Enter}');
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Documents' })).toBeInTheDocument();
+    expect(screen.getByRole('searchbox', { name: 'Search' })).toHaveValue('acme');
   });
 
   it('shows the section and page in the breadcrumb', async () => {
@@ -189,6 +225,8 @@ describe('AppShell', () => {
       fake.emit('SIGNED_OUT', null);
     });
 
-    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'Good to see you again.' }),
+    ).toBeInTheDocument();
   });
 });

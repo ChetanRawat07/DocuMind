@@ -1,5 +1,6 @@
-import { Route, Routes } from 'react-router';
+import { createRoutesFromElements, Outlet, Route, ScrollRestoration } from 'react-router';
 import { RequireAuth } from './auth/require-auth';
+import { AuthLayout } from './components/auth-card';
 import { AppShell } from './layout/app-shell';
 import { NAV_ITEMS } from './layout/navigation';
 import { AnalyticsPage } from './pages/analytics-page';
@@ -17,32 +18,43 @@ import { SettingsPage } from './pages/settings-page';
 import { SignupPage } from './pages/signup-page';
 
 /**
- * Route table. Rendered inside a router and an AuthProvider (see main.tsx).
+ * Route table for a data router (createBrowserRouter in main.tsx), rendered
+ * inside an AuthProvider. The signed-out pages other than sign in share one layout, so the card
+ * and brand panel stay mounted between them.
  */
-export function App() {
-  return (
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
+export const routes = createRoutesFromElements(
+  // ScrollRestoration: new pages open at the top; Back and Forward return to where the user was.
+  <Route
+    element={
+      <>
+        <ScrollRestoration />
+        <Outlet />
+      </>
+    }
+  >
+    {/* Sign in has its own split-screen layout. */}
+    <Route path="/login" element={<LoginPage />} />
+    <Route element={<AuthLayout />}>
       <Route path="/signup" element={<SignupPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
-      <Route
-        element={
-          <RequireAuth>
-            <AppShell />
-          </RequireAuth>
-        }
-      >
-        <Route index element={<DashboardPage />} />
-        <Route path={NAV_ITEMS.documents.path} element={<DocumentsPage />} />
-        <Route path={`${NAV_ITEMS.documents.path}/:documentId`} element={<DocumentDetailPage />} />
-        <Route path={NAV_ITEMS.processing.path} element={<ProcessingPage />} />
-        <Route path={NAV_ITEMS.review.path} element={<ReviewPage />} />
-        <Route path={NAV_ITEMS.analytics.path} element={<AnalyticsPage />} />
-        <Route path={NAV_ITEMS.auditLogs.path} element={<AuditLogsPage />} />
-        <Route path={NAV_ITEMS.settings.path} element={<SettingsPage />} />
-        <Route path="*" element={<NotFoundPage />} />
-      </Route>
-    </Routes>
-  );
-}
+    </Route>
+    <Route
+      element={
+        <RequireAuth>
+          <AppShell />
+        </RequireAuth>
+      }
+    >
+      <Route index element={<DashboardPage />} />
+      <Route path={NAV_ITEMS.documents.path} element={<DocumentsPage />} />
+      <Route path={`${NAV_ITEMS.documents.path}/:documentId`} element={<DocumentDetailPage />} />
+      <Route path={NAV_ITEMS.processing.path} element={<ProcessingPage />} />
+      <Route path={NAV_ITEMS.review.path} element={<ReviewPage />} />
+      <Route path={NAV_ITEMS.analytics.path} element={<AnalyticsPage />} />
+      <Route path={NAV_ITEMS.auditLogs.path} element={<AuditLogsPage />} />
+      <Route path={NAV_ITEMS.settings.path} element={<SettingsPage />} />
+      <Route path="*" element={<NotFoundPage />} />
+    </Route>
+  </Route>,
+);

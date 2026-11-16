@@ -8,9 +8,10 @@ import { LoadMore } from '../components/documents/load-more';
 import { UploadPanel } from '../components/documents/upload-panel';
 import { Button } from '../components/ui/button';
 import { Card, CardHeader } from '../components/ui/card';
-import { EmptyState, ErrorState, Spinner } from '../components/ui/feedback';
+import { EmptyState, ErrorState, SkeletonRows } from '../components/ui/feedback';
 import { PageHeader } from '../components/ui/page-header';
 import { NAV_ITEMS } from '../layout/navigation';
+import { useDelayedLoading } from '../lib/delayed-loading';
 import { DOCUMENT_SORT_LABEL } from '../lib/document-labels';
 import {
   type DocumentView,
@@ -18,9 +19,8 @@ import {
   documentViewToParams,
   hasDocumentFilters,
 } from '../lib/document-view';
+import { DOCUMENTS_PAGE_SIZE } from '../services/page-queries';
 import { useDocumentList } from '../services/use-document-list';
-
-export const DOCUMENTS_PAGE_SIZE = 20;
 
 function DocumentList({
   list,
@@ -33,9 +33,21 @@ function DocumentList({
   filtered: boolean;
   onClearFilters: () => void;
 }) {
-  if (list.status === 'loading') {
-    return <Spinner label="Loading documents…" className="px-5 py-10" />;
+  const load = useDelayedLoading(list.status === 'loading');
+  if (load.skeleton || list.status === 'loading') {
+    return (
+      <SkeletonRows label="Loading documents…" rows={8} stacked className={load.skeletonClass} />
+    );
   }
+  return <div className={load.revealClass}>{listBody(list, now, filtered, onClearFilters)}</div>;
+}
+
+function listBody(
+  list: Exclude<ReturnType<typeof useDocumentList>, { status: 'loading' }>,
+  now: Date,
+  filtered: boolean,
+  onClearFilters: () => void,
+) {
   if (list.status === 'error') {
     return (
       <ErrorState
@@ -80,6 +92,7 @@ function DocumentList({
         caption="Your documents"
         now={now}
         showSize
+        revealActions
         renderActions={(document) => (
           <DeleteDocumentButton document={document} onDeleted={list.remove} />
         )}
@@ -100,8 +113,9 @@ export function DocumentsPage() {
   const list = useDocumentList(view, DOCUMENTS_PAGE_SIZE);
   const [now] = useState(() => new Date());
 
+  // Changing the view keeps the scroll position: it is the same page.
   const showView = (next: DocumentView) => {
-    setParams(documentViewToParams(next));
+    setParams(documentViewToParams(next), { preventScrollReset: true });
   };
   // Stable, so the search box's debounce timer is not restarted by unrelated renders.
   // Searching replaces the history entry: typing should not fill the Back button.
@@ -115,7 +129,7 @@ export function DocumentsPage() {
           else next.delete('q');
           return next;
         },
-        { replace: true },
+        { replace: true, preventScrollReset: true },
       );
     },
     [setParams],
@@ -128,15 +142,15 @@ export function DocumentsPage() {
         <CardHeader
           title="Upload documents"
           description="Files are stored privately. Processing will start automatically once it is available."
-          className="px-5 pt-5"
+          className="px-4 pt-4 sm:px-6"
         />
         <UploadPanel onUploaded={list.add} />
       </Card>
-      <Card className="mt-4 overflow-hidden">
+      <Card className="mt-4 overflow-clip">
         <CardHeader
           title="All documents"
           description={DOCUMENT_SORT_LABEL[view.sort]}
-          className="border-b border-gray-100 px-5 py-4"
+          className="border-b border-line px-4 py-3 sm:px-6 sm:px-6"
         />
         <DocumentFilters view={view} onChange={showView} onSearch={search} />
         <DocumentList

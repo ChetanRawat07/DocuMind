@@ -2,7 +2,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryRouter, RouterProvider } from 'react-router';
-import { App } from '../App';
+import { routes } from '../App';
 import { AuthProvider } from '../auth/auth-context';
 import { createFakeAuthClient, fakeSession } from '../test/fake-auth-client';
 import { apiErrorResponse, renderApp, stubApi, testDocument } from '../test/render-app';
@@ -82,7 +82,7 @@ describe('DocumentDetailPage', () => {
 
     const preview = await screen.findByLabelText('Preview of invoice-1023.pdf');
     expect(preview.tagName).toBe('OBJECT');
-    expect(preview).toHaveAttribute('data', 'blob:test/1');
+    expect(preview).toHaveAttribute('data', 'blob:test/1#view=FitH');
     expect(preview).toHaveAttribute('type', 'application/pdf');
     const previewCall = fetchMock.mock.calls.find(([url]) => url === PREVIEW_URL);
     const headers = previewCall?.[1]?.headers as Record<string, string> | undefined;
@@ -206,7 +206,7 @@ describe('DocumentDetailPage', () => {
       return undefined;
     });
     const fake = createFakeAuthClient(fakeSession());
-    const router = createMemoryRouter([{ path: '*', element: <App /> }], {
+    const router = createMemoryRouter(routes, {
       initialEntries: ['/', `/documents/${DOCUMENT.id}`],
       initialIndex: 1,
     });

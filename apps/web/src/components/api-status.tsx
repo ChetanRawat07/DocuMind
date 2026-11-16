@@ -10,9 +10,9 @@ const STATUS_LABEL: Record<ApiStatus, string> = {
 };
 
 const STATUS_DOT_CLASS: Record<ApiStatus, string> = {
-  checking: 'bg-gray-400',
-  online: 'bg-green-500',
-  offline: 'bg-red-500',
+  checking: 'bg-fg-muted',
+  online: 'bg-success-solid',
+  offline: 'bg-danger-solid',
 };
 
 /** Liveness indicator; validates the response against the shared health contract. */
@@ -34,7 +34,7 @@ export function ApiStatusIndicator() {
   }, []);
 
   return (
-    <p className="flex items-center gap-2 text-sm" role="status" aria-live="polite">
+    <p className="flex items-center gap-2 text-compact" role="status" aria-live="polite">
       <span aria-hidden="true" className={`size-2 rounded-full ${STATUS_DOT_CLASS[status]}`} />
       {STATUS_LABEL[status]}
     </p>

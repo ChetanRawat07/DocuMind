@@ -8,15 +8,18 @@ import {
   REVIEW_CONFIDENCE_THRESHOLD,
 } from '@documind/shared';
 import { CircleCheck, CircleX, FileSearch, TriangleAlert } from 'lucide-react';
-import { useId, useState } from 'react';
+import { type KeyboardEvent, useId, useState } from 'react';
+import { cx } from '../../lib/cx';
+import { useDelayedLoading } from '../../lib/delayed-loading';
 import { DOCUMENT_TYPE_LABEL } from '../../lib/document-labels';
 import { ISSUE_LABEL } from '../../lib/extraction-labels';
 import { formatDateTime, formatPercent } from '../../lib/format';
 import { ApiError, SessionExpiredError } from '../../services/api-client';
 import { useApi } from '../../services/use-api';
-import { useApiQuery } from '../../services/use-api-query';
+import { invalidateDocumentData, useApiQuery } from '../../services/use-api-query';
+import { INPUT_CLASS } from '../form-controls';
 import { Button } from '../ui/button';
-import { EmptyState, ErrorState, Spinner } from '../ui/feedback';
+import { EmptyState, ErrorState, Skeleton, SkeletonRows } from '../ui/feedback';
 import { type FieldAction, FieldRow } from './field-row';
 
 /** Statuses in which the document has an extraction to show. */
@@ -56,7 +59,7 @@ function DecisionNote({ extraction }: { extraction: DocumentExtractionDto }) {
   const when = formatDateTime(decidedAt);
   if (decision === 'approved') {
     return (
-      <p className="flex gap-2 px-5 py-3 text-sm text-green-800">
+      <p className="flex gap-2 border-b border-line-subtle bg-success-subtle px-4 py-3 sm:px-6 text-compact text-success-fg">
         <CircleCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
         {decidedBy === 'system'
           ? `Approved automatically on ${when}: every value was found in the document and passed its checks.`
@@ -65,12 +68,12 @@ function DecisionNote({ extraction }: { extraction: DocumentExtractionDto }) {
     );
   }
   return (
-    <div className="px-5 py-3 text-sm text-red-800">
+    <div className="border-b border-line-subtle bg-danger-subtle px-4 py-3 sm:px-6 text-compact text-danger-fg">
       <p className="flex gap-2">
         <CircleX aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
         Rejected on {when}. Reprocess the document to extract it again.
       </p>
-      {rejectReason ? <p className="mt-1 text-gray-700">Reason: {rejectReason}</p> : null}
+      {rejectReason ? <p className="mt-1 text-fg-secondary">Reason: {rejectReason}</p> : null}
     </div>
   );
 }
@@ -80,10 +83,12 @@ function DecisionNote({ extraction }: { extraction: DocumentExtractionDto }) {
  * reason. The API enforces the same rule; the button only mirrors it.
  */
 function DecisionBar({
+  flagged,
   remaining,
   onApprove,
   onReject,
 }: {
+  flagged: number;
   remaining: number;
   onApprove: () => Promise<string | null>;
   onReject: (reason: string) => Promise<string | null>;
@@ -106,8 +111,8 @@ function DecisionBar({
 
   if (rejecting) {
     return (
-      <div className="space-y-2 border-t border-gray-100 px-5 py-4">
-        <label htmlFor={reasonId} className="block text-sm font-medium text-gray-700">
+      <div className="sticky bottom-0 z-10 space-y-2 border-t border-line bg-surface-subtle px-4 py-3 sm:px-6">
+        <label htmlFor={reasonId} className="block text-compact font-medium text-fg">
           Why is this extraction unusable? (optional)
         </label>
         <textarea
@@ -119,13 +124,13 @@ function DecisionBar({
           onChange={(event) => {
             setReason(event.target.value);
           }}
-          className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-xs focus:border-brand-600 focus:ring-3 focus:ring-brand-600/20 focus:outline-none"
+          className={`${INPUT_CLASS} px-3 py-2`}
         />
         <div className="flex gap-2">
           <Button
             size="sm"
-            className="bg-red-600 hover:bg-red-700"
-            disabled={busy}
+            variant="danger"
+            loading={busy}
             onClick={() => void run(() => onReject(reason))}
           >
             {busy ? 'Rejecting…' : 'Reject extraction'}
@@ -143,7 +148,7 @@ function DecisionBar({
           </Button>
         </div>
         {error ? (
-          <p role="alert" className="text-xs text-red-700">
+          <p role="alert" className="text-xs text-danger-fg">
             {error}
           </p>
         ) : null}
@@ -152,16 +157,28 @@ function DecisionBar({
   }
 
   return (
-    <div className="space-y-2 border-t border-gray-100 px-5 py-4">
-      <p id={hintId} className="text-xs text-gray-600">
+    <div className="sticky bottom-0 z-10 space-y-2 border-t border-line bg-surface-subtle px-4 py-3 sm:px-6">
+      <p id={hintId} className="text-xs text-fg-secondary">
         {remaining > 0
           ? `Confirm or correct ${String(remaining)} more flagged ${remaining === 1 ? 'field' : 'fields'} to approve.`
           : 'Every flagged field is checked. Approving makes these values final.'}
       </p>
+      {flagged > 0 ? (
+        <span
+          aria-hidden="true"
+          className="block h-1 overflow-hidden rounded-full bg-surface-muted"
+        >
+          <span
+            className="block h-full rounded-full bg-accent transition-[width] duration-150"
+            style={{ width: `${String(Math.round(((flagged - remaining) / flagged) * 100))}%` }}
+          />
+        </span>
+      ) : null}
       <div className="flex gap-2">
         <Button
           size="sm"
-          disabled={busy || remaining > 0}
+          loading={busy}
+          disabled={remaining > 0}
           aria-describedby={hintId}
           onClick={() => void run(onApprove)}
         >
@@ -179,12 +196,40 @@ function DecisionBar({
         </Button>
       </div>
       {error ? (
-        <p role="alert" className="text-xs text-red-700">
+        <p role="alert" className="text-xs text-danger-fg">
           {error}
         </p>
       ) : null}
     </div>
   );
+}
+
+/**
+ * Review keys on the field list: J and K move between fields, Enter confirms
+ * and E edits the focused one. Typing in a field or a button's own Enter is
+ * left alone.
+ */
+function handleFieldKeys(event: KeyboardEvent<HTMLUListElement>) {
+  const target = event.target as HTMLElement;
+  if (event.altKey || event.ctrlKey || event.metaKey || target.closest('input, textarea, form')) {
+    return;
+  }
+  const rows = [...event.currentTarget.children] as HTMLElement[];
+  const row = target.closest('li');
+  const key = event.key.toLowerCase();
+  if (key === 'j' || key === 'k') {
+    event.preventDefault();
+    const index = row ? rows.indexOf(row) : -1;
+    const next = Math.min(Math.max(index + (key === 'j' ? 1 : -1), 0), rows.length - 1);
+    rows[next]?.focus();
+  } else if (row && target === row && (key === 'enter' || key === 'e')) {
+    const action = key === 'e' ? 'edit' : 'confirm';
+    const button = row.querySelector<HTMLButtonElement>(`button[data-action="${action}"]`);
+    if (button && !button.disabled) {
+      event.preventDefault();
+      button.click();
+    }
+  }
 }
 
 /**
@@ -202,6 +247,19 @@ export function ExtractionPanel({
   return <LoadedExtraction document={document} onDocumentChange={onDocumentChange} />;
 }
 
+/** The type and confidence strip over a few field rows, as the loaded panel starts. */
+export function ExtractionSkeleton({ className }: { className?: string | undefined }) {
+  return (
+    <div className={className}>
+      <div className="flex h-[45px] items-center justify-between border-b border-line-subtle px-4 sm:px-6">
+        <Skeleton className="h-3 w-20" />
+        <Skeleton className="h-3 w-28" />
+      </div>
+      <SkeletonRows label="Loading extracted data…" rows={4} header={false} />
+    </div>
+  );
+}
+
 function LoadedExtraction({
   document,
   onDocumentChange,
@@ -215,8 +273,11 @@ function LoadedExtraction({
   // A saved field returns the whole extraction; it replaces the loaded one until the next load.
   const [saved, setSaved] = useState<DocumentExtractionDto | null>(null);
 
-  if (result.status === 'loading')
-    return <Spinner label="Loading extracted data…" className="py-10" />;
+  const load = useDelayedLoading(result.status === 'loading');
+
+  if (load.skeleton || result.status === 'loading') {
+    return <ExtractionSkeleton className={load.skeletonClass} />;
+  }
   if (result.status === 'error') {
     return (
       <ErrorState
@@ -233,7 +294,9 @@ function LoadedExtraction({
   const currency = extraction.fields.find((field) => field.name === 'currency')?.value;
   const remaining = extraction.fields.filter((field) => field.needsReview && !field.reviewed);
   const documentIssues = extraction.issues.filter((issue) => issue.fields.length === 0);
+  // Forgets cached document data first, so the reload shows loading rather than the old extraction.
   const reload = () => {
+    invalidateDocumentData();
     setSaved(null);
     result.retry();
   };
@@ -260,6 +323,7 @@ function LoadedExtraction({
           documentExtractionSchema,
         ),
       );
+      invalidateDocumentData();
       return null;
     } catch (error) {
       return failure(error, INVALID_VALUE[kind]);
@@ -283,24 +347,40 @@ function LoadedExtraction({
   }
 
   return (
-    <div>
-      <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-3">
-        <p className="text-sm text-gray-600">
+    <div className={load.revealClass}>
+      <div className="flex items-center justify-between gap-3 border-b border-line-subtle px-4 py-3 sm:px-6">
+        <p className="text-compact text-fg-secondary">
           {DOCUMENT_TYPE_LABEL[extraction.documentType]}
           {extraction.classificationConfidence < REVIEW_CONFIDENCE_THRESHOLD ? (
-            <span className="text-amber-800"> (type uncertain)</span>
+            <span className="text-warning-fg"> (type uncertain)</span>
           ) : null}
         </p>
-        <p
-          className="text-sm font-semibold text-gray-900 tabular-nums"
+        <div
+          className="flex items-center gap-2"
           title="The lowest score of any value: a review signal, not a probability."
         >
-          Confidence {formatPercent(extraction.overallConfidence)}
-        </p>
+          <p className="text-compact font-medium text-fg tabular-nums">
+            Confidence {formatPercent(extraction.overallConfidence)}
+          </p>
+          <span
+            aria-hidden="true"
+            className="h-1.5 w-16 overflow-hidden rounded-full bg-surface-muted"
+          >
+            <span
+              className={cx(
+                'block h-full rounded-full',
+                extraction.overallConfidence < REVIEW_CONFIDENCE_THRESHOLD
+                  ? 'bg-warning-fg'
+                  : 'bg-success-fg',
+              )}
+              style={{ width: `${String(Math.round(extraction.overallConfidence * 100))}%` }}
+            />
+          </span>
+        </div>
       </div>
       <DecisionNote extraction={extraction} />
       {editable && extraction.classificationConfidence < REVIEW_CONFIDENCE_THRESHOLD ? (
-        <p className="flex gap-2 border-b border-gray-100 bg-amber-50/70 px-5 py-3 text-xs text-amber-900">
+        <p className="flex gap-2 border-b border-line-subtle bg-warning-subtle px-4 py-3 sm:px-6 text-xs text-warning-fg">
           <TriangleAlert aria-hidden="true" className="size-4 shrink-0" />
           The document type could not be confirmed from its text. If the type is wrong, reject the
           extraction.
@@ -309,13 +389,17 @@ function LoadedExtraction({
       {documentIssues.map((issue) => (
         <p
           key={issue.code}
-          className="flex gap-2 border-b border-gray-100 bg-amber-50/70 px-5 py-3 text-xs text-amber-900"
+          className="flex gap-2 border-b border-line-subtle bg-warning-subtle px-4 py-3 sm:px-6 text-xs text-warning-fg"
         >
           <TriangleAlert aria-hidden="true" className="size-4 shrink-0" />
           {ISSUE_LABEL[issue.code]}
         </p>
       ))}
-      <ul className="divide-y divide-gray-100" aria-label="Extracted fields">
+      <ul
+        className="divide-y divide-line-subtle"
+        aria-label="Extracted fields"
+        onKeyDown={editable ? handleFieldKeys : undefined}
+      >
         {extraction.fields.map((field) => (
           <FieldRow
             key={field.name}
@@ -328,6 +412,7 @@ function LoadedExtraction({
       </ul>
       {editable ? (
         <DecisionBar
+          flagged={extraction.fields.filter((field) => field.needsReview).length}
           remaining={remaining.length}
           onApprove={() => decide('approve', {})}
           onReject={(reason) => decide('reject', reason.trim() ? { reason } : {})}

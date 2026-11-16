@@ -16,7 +16,11 @@ export function NotFoundPage() {
           title="This page doesn't exist"
           description="The link may be out of date, or the address may have a typo."
           action={
-            <Link to={NAV_ITEMS.dashboard.path} className={buttonClasses('secondary', 'sm')}>
+            <Link
+              to={NAV_ITEMS.dashboard.path}
+              viewTransition
+              className={buttonClasses('primary', 'sm')}
+            >
               Go to the dashboard
             </Link>
           }

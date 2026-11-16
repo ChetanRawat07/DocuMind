@@ -15,10 +15,14 @@ export function MobileNav({
   id,
   onClose,
   returnFocusTo,
+  userName,
+  reviewCount,
 }: {
   id: string;
   onClose: () => void;
   returnFocusTo: RefObject<HTMLElement | null>;
+  userName: string;
+  reviewCount: string | null;
 }) {
   const closeButton = useRef<HTMLButtonElement>(null);
 
@@ -48,24 +52,24 @@ export function MobileNav({
 
   return (
     <div className="fixed inset-0 z-40 lg:hidden">
-      <div aria-hidden="true" className="absolute inset-0 bg-gray-900/40" onClick={onClose} />
+      <div aria-hidden="true" className="absolute inset-0 bg-overlay" onClick={onClose} />
       <div
         id={id}
         role="dialog"
         aria-modal="true"
         aria-label="Navigation"
-        className="absolute inset-y-0 left-0 w-72 max-w-[85vw] bg-white shadow-xl"
+        className="absolute inset-y-0 left-0 w-60 max-w-[85vw] border-r border-showcase-line bg-showcase shadow-sm"
       >
         <button
           ref={closeButton}
           type="button"
           onClick={onClose}
           aria-label="Close navigation"
-          className="absolute top-4 right-3 grid size-9 place-items-center rounded-lg text-gray-500 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-brand-600"
+          className="absolute top-3 right-2 grid size-8 place-items-center rounded-lg text-showcase-muted transition-colors duration-150 hover:bg-showcase-raised hover:text-showcase-fg focus-visible:outline-2 focus-visible:outline-showcase-fg"
         >
-          <X aria-hidden="true" className="size-5" />
+          <X aria-hidden="true" className="size-4" />
         </button>
-        <SidebarContent onNavigate={onClose} />
+        <SidebarContent onNavigate={onClose} userName={userName} reviewCount={reviewCount} />
       </div>
     </div>
   );

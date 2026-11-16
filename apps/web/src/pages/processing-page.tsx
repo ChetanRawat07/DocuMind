@@ -1,5 +1,6 @@
 import {
   type OwnedProcessingJobDto,
+  type OwnedProcessingJobListResponse,
   ownedProcessingJobListResponseSchema,
   PROCESSING_JOB_STATUSES,
   type ProcessingJobStatus,
@@ -9,17 +10,21 @@ import {
 import { Workflow } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
+import { FOCUS_RING, SEGMENTED_GROUP, segmentClasses } from '../components/ui/button-styles';
 import { Card, CardHeader } from '../components/ui/card';
-import { EmptyState, ErrorState, Spinner } from '../components/ui/feedback';
+import { EmptyState, ErrorState, SkeletonRows } from '../components/ui/feedback';
 import { PageHeader } from '../components/ui/page-header';
-import { StatCard } from '../components/ui/stat-card';
+import { StatCard, StatGroup, StatGroupSkeleton } from '../components/ui/stat-card';
 import { StatusBadge } from '../components/ui/status-badge';
+import { ROW, TABLE, TABLE_WRAP, TD, TH } from '../components/ui/table-styles';
 import { NAV_ITEMS } from '../layout/navigation';
 import { JOB_STATUS_DISPLAY, jobErrorLabel } from '../lib/activity-labels';
 import { cx } from '../lib/cx';
+import { useDelayedLoading } from '../lib/delayed-loading';
 import { documentDetailPath } from '../lib/document-view';
 import { formatDuration, formatRelativeTime } from '../lib/format';
-import { useApiQuery } from '../services/use-api-query';
+import { PROCESSING_SUMMARY_PATH } from '../services/page-queries';
+import { type QueryState, useApiQuery } from '../services/use-api-query';
 
 /** Shown in the table; the API's default page. */
 export const PROCESSING_JOBS_LIMIT = 50;
@@ -30,7 +35,7 @@ function Summary({ summary }: { summary: ProcessingSummary }) {
   const period = `Last ${String(summary.windowDays)} days`;
   return (
     <>
-      <section aria-label="Processing summary" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <StatGroup aria-label="Processing summary" className="grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="In queue"
           value={String(summary.queued + summary.running)}
@@ -55,19 +60,22 @@ function Summary({ summary }: { summary: ProcessingSummary }) {
           value={duration(summary.aiMs.average)}
           hint={`AI average · text and OCR ${duration(summary.textExtractionMs.average) ?? '—'}`}
         />
-      </section>
+      </StatGroup>
       {summary.failuresByCode.length > 0 ? (
-        <Card className="mt-4 overflow-hidden">
+        <Card className="mt-4 overflow-clip">
           <CardHeader
             title="Why jobs failed"
             description={period}
-            className="border-b border-gray-100 px-5 py-4"
+            className="border-b border-line px-4 py-3 sm:px-6"
           />
-          <ul className="divide-y divide-gray-100">
+          <ul className="divide-y divide-line-subtle">
             {summary.failuresByCode.map((failure) => (
-              <li key={failure.code} className="flex justify-between gap-4 px-5 py-3 text-sm">
-                <span className="text-gray-900">{jobErrorLabel(failure.code)}</span>
-                <span className="font-semibold text-gray-900 tabular-nums">{failure.count}</span>
+              <li
+                key={failure.code}
+                className="flex justify-between gap-4 px-4 py-2 sm:px-6 text-compact"
+              >
+                <span className="text-fg">{jobErrorLabel(failure.code)}</span>
+                <span className="font-medium text-fg tabular-nums">{failure.count}</span>
               </li>
             ))}
           </ul>
@@ -84,15 +92,19 @@ function JobRow({ job, now }: { job: OwnedProcessingJobDto; now: Date }) {
       ? new Date(job.finishedAt).getTime() - new Date(job.startedAt).getTime()
       : null;
   return (
-    <tr className="border-b border-gray-100 last:border-0">
-      <td className="max-w-64 px-5 py-3">
+    <tr className={ROW}>
+      <td className={cx(TD, 'max-w-64')}>
         <Link
           to={documentDetailPath(job.document.id)}
-          className="block truncate font-medium text-gray-900 hover:text-brand-700 hover:underline"
+          viewTransition
+          className={cx(
+            'block truncate rounded-md font-medium text-fg hover:text-accent-fg hover:underline',
+            FOCUS_RING,
+          )}
         >
           {job.document.originalFilename}
         </Link>
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-fg-muted">
           <time dateTime={job.createdAt}>{formatRelativeTime(job.createdAt, now)}</time>
           {job.requestId ? (
             <>
@@ -104,27 +116,29 @@ function JobRow({ job, now }: { job: OwnedProcessingJobDto; now: Date }) {
           ) : null}
         </p>
       </td>
-      <td className="px-5 py-3">
+      <td className={TD}>
         <StatusBadge tone={display.tone} label={display.label} />
         {job.status === 'running' && job.stage ? (
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-fg-muted">
             {job.stage === 'text_extraction' ? 'Reading text' : 'AI extraction'}
           </p>
         ) : null}
         {job.errorCode ? (
-          <p className="mt-1 text-xs text-red-800">{jobErrorLabel(job.errorCode)}</p>
+          <p className="mt-1 text-xs text-danger-fg">{jobErrorLabel(job.errorCode)}</p>
         ) : null}
       </td>
-      <td className="hidden px-5 py-3 text-right tabular-nums sm:table-cell">
+      <td className={cx(TD, 'hidden text-right font-mono text-xs text-fg-secondary sm:table-cell')}>
         {job.attempts}/{job.maxAttempts}
       </td>
-      <td className="hidden px-5 py-3 text-right tabular-nums md:table-cell">
+      <td className={cx(TD, 'hidden text-right font-mono text-xs text-fg-secondary md:table-cell')}>
         {duration(job.textExtractionMs) ?? '—'}
       </td>
-      <td className="hidden px-5 py-3 text-right tabular-nums md:table-cell">
+      <td className={cx(TD, 'hidden text-right font-mono text-xs text-fg-secondary md:table-cell')}>
         {duration(job.aiMs) ?? '—'}
       </td>
-      <td className="px-5 py-3 text-right tabular-nums">{duration(total) ?? '—'}</td>
+      <td className={cx(TD, 'text-right font-mono text-xs font-medium text-fg')}>
+        {duration(total) ?? '—'}
+      </td>
     </tr>
   );
 }
@@ -133,8 +147,21 @@ function Jobs({ status }: { status: ProcessingJobStatus | undefined }) {
   const [now] = useState(() => new Date());
   const path = `/processing/jobs?limit=${String(PROCESSING_JOBS_LIMIT)}${status ? `&status=${status}` : ''}`;
   const jobs = useApiQuery(path, ownedProcessingJobListResponseSchema);
+  const load = useDelayedLoading(jobs.status === 'loading');
 
-  if (jobs.status === 'loading') return <Spinner label="Loading jobs…" className="py-10" />;
+  if (load.skeleton || jobs.status === 'loading') {
+    return <SkeletonRows label="Loading jobs…" rows={8} className={load.skeletonClass} />;
+  }
+  return <div className={load.revealClass}>{jobsBody(jobs, status, now)}</div>;
+}
+
+function jobsBody(
+  jobs: Exclude<QueryState<OwnedProcessingJobListResponse>, { status: 'loading' }> & {
+    retry: () => void;
+  },
+  status: ProcessingJobStatus | undefined,
+  now: Date,
+) {
   if (jobs.status === 'error') {
     return (
       <ErrorState
@@ -154,31 +181,30 @@ function Jobs({ status }: { status: ProcessingJobStatus | undefined }) {
       />
     );
   }
-  const th = 'px-5 py-3 font-medium whitespace-nowrap';
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-left text-sm">
+    <div className={TABLE_WRAP}>
+      <table className={TABLE}>
         <caption className="sr-only">
           Processing jobs, newest first. Times are for text extraction, AI and the whole job.
         </caption>
-        <thead className="text-xs tracking-wide text-gray-500 uppercase">
-          <tr className="border-b border-gray-100">
-            <th scope="col" className={th}>
+        <thead>
+          <tr>
+            <th scope="col" className={TH}>
               Document
             </th>
-            <th scope="col" className={th}>
+            <th scope="col" className={TH}>
               Status
             </th>
-            <th scope="col" className={cx(th, 'hidden text-right sm:table-cell')}>
+            <th scope="col" className={cx(TH, 'hidden text-right sm:table-cell')}>
               Attempts
             </th>
-            <th scope="col" className={cx(th, 'hidden text-right md:table-cell')}>
+            <th scope="col" className={cx(TH, 'hidden text-right md:table-cell')}>
               Text
             </th>
-            <th scope="col" className={cx(th, 'hidden text-right md:table-cell')}>
+            <th scope="col" className={cx(TH, 'hidden text-right md:table-cell')}>
               AI
             </th>
-            <th scope="col" className={cx(th, 'text-right')}>
+            <th scope="col" className={cx(TH, 'text-right')}>
               Total
             </th>
           </tr>
@@ -190,7 +216,7 @@ function Jobs({ status }: { status: ProcessingJobStatus | undefined }) {
         </tbody>
       </table>
       {jobs.data.items.length === PROCESSING_JOBS_LIMIT ? (
-        <p className="border-t border-gray-100 px-5 py-3 text-xs text-gray-500">
+        <p className="border-t border-line px-4 py-3 sm:px-6 text-xs text-fg-muted">
           Showing the {PROCESSING_JOBS_LIMIT} most recent jobs.
         </p>
       ) : null}
@@ -203,7 +229,8 @@ function Jobs({ status }: { status: ProcessingJobStatus | undefined }) {
  * running, how recent jobs went, how long each step takes and why jobs fail.
  */
 export function ProcessingPage() {
-  const summary = useApiQuery('/processing/summary', processingSummarySchema);
+  const summary = useApiQuery(PROCESSING_SUMMARY_PATH, processingSummarySchema);
+  const summaryLoad = useDelayedLoading(summary.status === 'loading');
   const [status, setStatus] = useState<ProcessingJobStatus | undefined>(undefined);
 
   return (
@@ -212,8 +239,12 @@ export function ProcessingPage() {
         title={NAV_ITEMS.processing.label}
         description={NAV_ITEMS.processing.description}
       />
-      {summary.status === 'loading' ? (
-        <Spinner label="Loading the summary…" className="py-6" />
+      {summaryLoad.skeleton || summary.status === 'loading' ? (
+        <StatGroupSkeleton
+          label="Loading the summary…"
+          count={4}
+          className={cx('grid-cols-2 lg:grid-cols-4', summaryLoad.skeletonClass)}
+        />
       ) : summary.status === 'error' ? (
         <Card>
           <ErrorState
@@ -224,15 +255,17 @@ export function ProcessingPage() {
           />
         </Card>
       ) : (
-        <Summary summary={summary.data} />
+        <div className={summaryLoad.revealClass}>
+          <Summary summary={summary.data} />
+        </div>
       )}
-      <Card className="mt-4 overflow-hidden">
+      <Card className="mt-4 overflow-clip">
         <CardHeader
           title="Jobs"
           description="Newest first"
-          className="border-b border-gray-100 px-5 py-4"
+          className="border-b border-line px-4 py-3 sm:px-6"
           action={
-            <div role="group" aria-label="Filter by status" className="flex flex-wrap gap-1">
+            <div role="group" aria-label="Filter by status" className={SEGMENTED_GROUP}>
               {[undefined, ...PROCESSING_JOB_STATUSES].map((option) => (
                 <button
                   key={option ?? 'all'}
@@ -241,12 +274,7 @@ export function ProcessingPage() {
                   onClick={() => {
                     setStatus(option);
                   }}
-                  className={cx(
-                    'rounded-md px-2.5 py-1 text-xs font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600',
-                    status === option
-                      ? 'bg-brand-50 text-brand-700'
-                      : 'text-gray-600 hover:bg-gray-100',
-                  )}
+                  className={segmentClasses(status === option)}
                 >
                   {option ? JOB_STATUS_DISPLAY[option].label : 'All'}
                 </button>

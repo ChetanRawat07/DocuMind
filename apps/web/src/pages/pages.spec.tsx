@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fakeSession } from '../test/fake-auth-client';
 import {
   apiErrorResponse,
+  isReviewCountRequest,
   renderApp,
   stubApi,
   TEST_USER,
@@ -126,7 +127,7 @@ describe('DashboardPage', () => {
   it('shows an error for recent documents and recovers on retry', async () => {
     let failures = 1;
     stubApi((url) => {
-      if (url.startsWith('/api/v1/documents') && failures > 0) {
+      if (url.startsWith('/api/v1/documents') && !isReviewCountRequest(url) && failures > 0) {
         failures -= 1;
         return apiErrorResponse(503);
       }
@@ -181,7 +182,9 @@ describe('SettingsPage', () => {
     await user.click(within(session as HTMLElement).getByRole('button', { name: 'Sign out' }));
 
     expect(fake.mocks.signOut).toHaveBeenCalledWith({ scope: 'local' });
-    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'Good to see you again.' }),
+    ).toBeInTheDocument();
   });
 
   it('deletes all data only after the confirmation is typed, then signs out', async () => {
@@ -201,7 +204,9 @@ describe('SettingsPage', () => {
     await user.type(screen.getByLabelText('Type DELETE to confirm'), 'DELETE');
     await user.click(erase);
 
-    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'Good to see you again.' }),
+    ).toBeInTheDocument();
     expect(fake.mocks.signOut).toHaveBeenCalledWith({ scope: 'local' });
     expect(
       fetchMock.mock.calls.filter(

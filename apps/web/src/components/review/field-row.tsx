@@ -27,17 +27,17 @@ type ListItems = Extract<ExtractedFieldDto['value'], unknown[]>;
 function ListValue({ value, currency }: { value: ListItems; currency: string | null }) {
   const money = (amount: number | null) => (amount === null ? '?' : formatAmount(amount, currency));
   return (
-    <ul className="mt-1 space-y-1 text-sm text-gray-900">
+    <ul className="mt-1 space-y-1 text-compact text-fg">
       {value.map((item, index) =>
         'name' in item ? (
           <li key={index}>
             {item.name}
-            {item.role ? <span className="text-gray-500"> ({item.role})</span> : null}
+            {item.role ? <span className="text-fg-muted"> ({item.role})</span> : null}
           </li>
         ) : (
           <li key={index} className="flex justify-between gap-3">
             <span className="min-w-0 break-words">{item.description}</span>
-            <span className="shrink-0 text-gray-600 tabular-nums">
+            <span className="shrink-0 text-fg-secondary tabular-nums">
               {item.quantity ?? '?'} × {money(item.unitPrice)} = {money(item.amount)}
             </span>
           </li>
@@ -106,19 +106,25 @@ export function FieldRow({
   }
 
   return (
-    <li className={cx('px-5 py-3', pending && 'bg-amber-50/70')}>
+    <li
+      tabIndex={-1}
+      className={cx(
+        'px-4 py-3 outline-accent focus-visible:outline-2 focus-visible:-outline-offset-2 sm:px-6',
+        pending && 'bg-warning-subtle shadow-[inset_2px_0_0_var(--color-warning-fg)]',
+      )}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium text-gray-500">{label}</p>
+          <p className="text-xs font-medium text-fg-muted">{label}</p>
           {Array.isArray(field.value) && field.value.length > 0 ? (
             <ListValue value={field.value} currency={currency} />
           ) : (
-            <p className="text-sm font-medium break-words text-gray-900">
-              {shown ?? <span className="font-normal text-gray-400">Not found</span>}
+            <p className="text-sm font-medium break-words text-fg">
+              {shown ?? <span className="font-normal text-fg-muted">Not found</span>}
             </p>
           )}
           {field.corrected ? (
-            <p className="mt-0.5 text-xs text-gray-500">
+            <p className="mt-0.5 text-xs text-fg-muted">
               Extracted: {formatFieldValue(field, field.extractedValue, currency) ?? 'nothing'}
             </p>
           ) : null}
@@ -127,8 +133,10 @@ export function FieldRow({
           {field.confidence !== null ? (
             <span
               className={cx(
-                'rounded-md px-1.5 py-0.5 text-xs font-semibold tabular-nums',
-                field.needsReview ? 'bg-amber-100 text-amber-900' : 'bg-gray-100 text-gray-700',
+                'inline-flex h-5 items-center rounded-md border px-1.5 text-xs font-medium tabular-nums',
+                field.needsReview
+                  ? 'border-warning-line bg-surface text-warning-fg'
+                  : 'border-line bg-surface-muted text-fg-secondary',
               )}
               title="Score from checks against the document. A review signal, not a guarantee."
             >
@@ -136,9 +144,9 @@ export function FieldRow({
               {formatPercent(field.confidence)}
             </span>
           ) : null}
-          {pending ? <span className="text-xs font-semibold text-amber-800">Check</span> : null}
+          {pending ? <span className="text-xs font-medium text-warning-fg">Check</span> : null}
           {field.reviewed ? (
-            <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-800">
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-success-fg">
               <Check aria-hidden="true" className="size-3.5" />
               {field.corrected ? 'Corrected' : 'Confirmed'}
             </span>
@@ -147,14 +155,14 @@ export function FieldRow({
       </div>
 
       {field.needsReview ? (
-        <div className="mt-1.5 space-y-1 text-xs">
+        <div className="mt-2 space-y-1 text-xs">
           {field.issues.map((code) => (
-            <p key={code} className="text-amber-900">
+            <p key={code} className="text-warning-fg">
               {ISSUE_LABEL[code]}
             </p>
           ))}
           {field.evidence ? (
-            <p className="text-gray-600">
+            <p className="text-fg-secondary">
               Quoted: <q className="italic">{field.evidence}</q>
             </p>
           ) : null}
@@ -178,7 +186,7 @@ export function FieldRow({
             }}
           />
           <div className="flex gap-2">
-            <Button type="submit" size="sm" disabled={busy}>
+            <Button type="submit" size="sm" loading={busy}>
               {busy ? 'Saving…' : 'Save'}
             </Button>
             <Button
@@ -203,6 +211,7 @@ export function FieldRow({
               size="sm"
               disabled={busy}
               aria-label={`Confirm ${label}`}
+              data-action="confirm"
               onClick={() => void save({ action: 'confirm' })}
             >
               <Check aria-hidden="true" className="size-3.5" />
@@ -215,6 +224,7 @@ export function FieldRow({
               size="sm"
               disabled={busy}
               aria-label={`Edit ${label}`}
+              data-action="edit"
               onClick={() => {
                 const current = field.value;
                 setInput(current === null || Array.isArray(current) ? '' : String(current));
@@ -230,7 +240,7 @@ export function FieldRow({
       ) : null}
 
       {error ? (
-        <p role="alert" className="mt-1.5 text-xs text-red-700">
+        <p role="alert" className="mt-2 text-xs text-danger-fg">
           {error}
         </p>
       ) : null}

@@ -1,30 +1,300 @@
 @import 'tailwindcss';
 
 /*
- * Design tokens. The palette follows the UI concept: a light canvas, white
- * cards, gray neutrals and a single blue accent. Components use these names
- * (bg-canvas, bg-brand-600, ...) rather than raw hex values.
+ * Design tokens. Components use only these names (bg-surface, text-fg-muted,
+ * border-line, bg-accent, text-danger-fg, ...), never raw palette colours.
+ * Light values live here; dark values override the same variables below.
+ * Every text/background pair used together keeps at least 4.5:1 contrast.
  */
 @theme {
-  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* DM Sans for the interface, Manrope for the brand and page titles, DM Mono for ids and timings. */
+  --font-sans: 'DM Sans Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Manrope Variable', 'DM Sans Variable', ui-sans-serif, sans-serif;
+  --font-mono: 'DM Mono', ui-monospace, monospace;
+  --font-label: 'DM Mono', ui-monospace, monospace;
 
-  --color-canvas: #f7f8fa;
-  --color-brand-50: #eff6ff;
-  --color-brand-100: #dbeafe;
-  --color-brand-200: #bfdbfe;
-  --color-brand-300: #93c5fd;
-  --color-brand-500: #3b82f6;
-  --color-brand-600: #2563eb;
-  --color-brand-700: #1d4ed8;
-  --color-brand-800: #1e40af;
+  /* Navy structure: the sidebar and the sign-in product panel (dark in both themes). */
+  --color-paper: #f5f4f0;
+  --color-showcase: #151d2d;
+  --color-showcase-raised: #202b40;
+  --color-showcase-line: #2c3850;
+  --color-showcase-fg: #f4f5f8;
+  --color-showcase-muted: #a9b4c6;
+
+  /* Surfaces: warm paper canvas, white cards, warm inset fills. */
+  --color-canvas: #f5f4f0;
+  --color-surface: #ffffff;
+  --color-surface-subtle: #f8f7f4;
+  --color-surface-muted: #efeee9;
+  --color-overlay: rgb(21 29 45 / 0.45);
+
+  /* Borders: dividers inside cards, card edges, form controls. */
+  --color-line-subtle: #eeece7;
+  --color-line: #e4e2dc;
+  --color-line-strong: #d9d8d2;
+
+  /* Text: ink, then greys that keep 4.5:1 on paper and the warm fills. */
+  --color-fg: #171a20;
+  --color-fg-secondary: #4f5560;
+  --color-fg-muted: #666b74;
+
+  /* The one accent: primary actions, links, focus, selection. */
+  --color-accent: #3158d8;
+  --color-accent-hover: #2547bb;
+  --color-accent-fg: #2547bb;
+  --color-accent-subtle: #e9edf8;
+  --color-on-accent: #ffffff;
+  --color-chart: #a8b8ec;
+
+  /* Statuses: -fg is text, -subtle a tinted fill, -line its border, -solid a filled control. */
+  --color-success-fg: #22694f;
+  --color-success-subtle: #edf6f0;
+  --color-success-line: #c6e3d2;
+  --color-success-solid: #2c8a63;
+  --color-warning-fg: #7a4f0f;
+  --color-warning-subtle: #fbf5e6;
+  --color-warning-line: #ecd9a8;
+  --color-danger-fg: #9b3028;
+  --color-danger-subtle: #fdf0ee;
+  --color-danger-line: #f1c9c3;
+  --color-danger-solid: #c7463b;
+  --color-danger-solid-hover: #a83a30;
+  --color-info-fg: #2547bb;
+  --color-info-subtle: #e9edf8;
+  --color-info-line: #d1d9f5;
+
+  /* Type scale: 12 / 13 / 14 / 16 / 20 / 24. */
+  --text-*: initial;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-compact: 0.8125rem;
+  --text-compact--line-height: 1.25rem;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5rem;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.75rem;
+  --text-2xl: 1.5rem;
+  --text-2xl--line-height: 2rem;
+
+  /* Radii: 4 badges and small tiles, 6 buttons and inputs, 8 cards and panels. */
+  --radius-*: initial;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-xl: 8px;
+
+  /* Depth: surfaces are flat; only things that float (menus, drawer, tooltips) cast a shadow. */
+  --shadow-*: initial;
+  --shadow-sm: 0 2px 8px rgb(21 29 45 / 0.08);
+
+  /*
+   * Motion. Signed-in pages only crossfade between pages (see the view
+   * transition below) and fade content in over the skeleton it replaces
+   * (`reveal`); the signed-out card has its own entrance. Use these with
+   * `motion-safe:` so reduced motion shows the end state.
+   */
+  --ease-emphasized: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-rise: rise 320ms var(--ease-emphasized) both;
+  --animate-fade-in: fade-in 200ms ease both;
+  --animate-reveal: fade-in 150ms ease both;
+  --animate-alert-in: alert-in 200ms var(--ease-emphasized) both;
+  --animate-dot-pulse: dot-pulse 1.6s ease-in-out infinite;
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes fade-out {
+    to {
+      opacity: 0;
+    }
+  }
+  @keyframes alert-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+  }
+  @keyframes dot-pulse {
+    50% {
+      opacity: 0.4;
+    }
+  }
+}
+
+/*
+ * Spacing follows Tailwind's 4px unit; layouts stick to 1, 2, 3, 4, 6 and 8
+ * (4 / 8 / 12 / 16 / 24 / 32px).
+ */
+
+/* Dark: the same ink-and-navy family, deepened; the sidebar navy stays as it is. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-canvas: #10141c;
+    --color-paper: #10141c;
+    --color-surface: #171c26;
+    --color-surface-subtle: #1c2230;
+    --color-surface-muted: #232a38;
+    --color-overlay: rgb(5 8 14 / 0.6);
+    --color-showcase-line: #2a3446;
+
+    --color-line-subtle: #222837;
+    --color-line: #2c3343;
+    --color-line-strong: #3d4558;
+
+    --color-fg: #e8eaee;
+    --color-fg-secondary: #b4bac5;
+    --color-fg-muted: #8d95a3;
+
+    --color-accent: #3f66e0;
+    --color-accent-hover: #3158d8;
+    --color-accent-fg: #8ea6f5;
+    --color-accent-subtle: #1a2440;
+    --color-chart: #34509f;
+
+    --color-success-fg: #6cc79a;
+    --color-success-subtle: #13241c;
+    --color-success-line: #234a36;
+    --color-success-solid: #2f9468;
+    --color-warning-fg: #e8b45a;
+    --color-warning-subtle: #2a2216;
+    --color-warning-line: #5a4519;
+    --color-danger-fg: #f08a80;
+    --color-danger-subtle: #2d1719;
+    --color-danger-line: #5c2a28;
+    --color-danger-solid: #c7463b;
+    --color-danger-solid-hover: #a83a30;
+    --color-info-fg: #8ea6f5;
+    --color-info-subtle: #1a2440;
+    --color-info-line: #2b3c6b;
+
+    --shadow-sm: 0 2px 8px rgb(0 0 0 / 0.4);
+  }
 }
 
 @layer base {
   html {
-    color-scheme: light;
+    color-scheme: light dark;
+    /* Room for the scrollbar is always kept, so pages line up whether or not they scroll. */
+    scrollbar-gutter: stable;
   }
 
   body {
-    @apply bg-canvas text-gray-900 antialiased;
+    @apply bg-canvas text-sm text-fg antialiased;
+  }
+
+  /* Timestamps and stat values line up and do not jitter; numeric table cells add tabular-nums. */
+  time,
+  dd {
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::selection {
+    @apply bg-accent-subtle;
+  }
+}
+
+/*
+ * Page change (links with React Router's `viewTransition`): the old page
+ * fades out in 120ms while the new one fades in over 180ms.
+ * The sidebar, top bar and signed-out brand panel have their own names, so
+ * they stay still. Browsers without view transitions just navigate.
+ */
+::view-transition {
+  /* Clicks reach the new page during the crossfade: nothing waits on it. */
+  pointer-events: none;
+}
+
+::view-transition-group(sidebar),
+::view-transition-old(sidebar),
+::view-transition-new(sidebar),
+::view-transition-group(top-bar),
+::view-transition-old(top-bar),
+::view-transition-new(top-bar),
+::view-transition-group(auth-brand),
+::view-transition-old(auth-brand),
+::view-transition-new(auth-brand) {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* The browser's own root animation runs 250ms; this keeps the whole change within 200ms. */
+  ::view-transition-group(root) {
+    animation-duration: 180ms;
+  }
+  ::view-transition-old(root) {
+    animation: fade-out 120ms var(--ease-emphasized) both;
+  }
+  ::view-transition-new(root) {
+    animation: fade-in 180ms ease both;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
+/*
+ * Signed-out card entrance: the card rises, then the brand, the title and
+ * each form row follow 40ms apart. The rows only stagger on the first page
+ * shown; moving between signed-out pages keeps the card (`data-entered`).
+ * A form alert slides in on its own, and the card fades out before
+ * navigating away after a successful submit.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .auth-card,
+  .auth-card:where(:not([data-entered])) :is(.auth-head > *, form > *) {
+    animation: var(--animate-rise);
+    animation-delay: calc(var(--step, 0) * 40ms);
+  }
+  .auth-head > :nth-child(2) {
+    --step: 1;
+  }
+  .auth-card form > :nth-child(1) {
+    --step: 2;
+  }
+  .auth-card form > :nth-child(2) {
+    --step: 3;
+  }
+  .auth-card form > :nth-child(3) {
+    --step: 4;
+  }
+  .auth-card form > :nth-child(4) {
+    --step: 5;
+  }
+  .auth-card form > :nth-child(n + 5) {
+    --step: 6;
+  }
+  .auth-card form > [role='alert'] {
+    animation: var(--animate-alert-in);
+  }
+  .auth-card > [data-leaving] {
+    animation: fade-out 150ms ease forwards;
+  }
+}
+
+/*
+ * Table row actions on devices that can hover: hidden until the row is
+ * hovered or holds focus. An open confirmation (`data-keep-visible`) stays.
+ */
+@media (hover: hover) {
+  .reveal-on-hover:not(:has([data-keep-visible])) {
+    opacity: 0;
+    transition: opacity 150ms ease;
+  }
+  .group:is(:hover, :focus-within) .reveal-on-hover {
+    opacity: 1;
   }
 }

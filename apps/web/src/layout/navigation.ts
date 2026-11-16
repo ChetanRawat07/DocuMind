@@ -8,6 +8,7 @@ import {
   Settings,
   Workflow,
 } from 'lucide-react';
+import { documentListPath } from '../lib/document-view';
 
 export interface NavItem {
   readonly path: string;
@@ -90,3 +91,10 @@ export function breadcrumbFor(pathname: string): readonly string[] {
   }
   return pathname === NAV_ITEMS.settings.path ? [NAV_ITEMS.settings.label] : [];
 }
+
+/** The sidebar's review badge counts up to one page of the queue, then shows "100+". */
+export const REVIEW_COUNT_LIMIT = 100;
+export const REVIEW_COUNT_PATH = documentListPath(
+  { status: 'needs_review', sort: 'oldest' },
+  REVIEW_COUNT_LIMIT,
+);

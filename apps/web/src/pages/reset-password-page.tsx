@@ -1,10 +1,11 @@
-import { type SubmitEvent, useState } from 'react';
+import { type SubmitEvent, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../auth/use-auth';
 import { passwordUpdateErrorMessage } from '../auth/auth-errors';
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '../auth/password-policy';
 import { AuthCard } from '../components/auth-card';
 import { FormAlert, SubmitButton, TextField } from '../components/form-controls';
+import { afterMotion, nudge } from '../lib/motion';
 
 /**
  * Target of the reset email. supabase-js exchanges the link's one-time code
@@ -16,11 +17,13 @@ export function ResetPasswordPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const passwordInput = useRef<HTMLInputElement>(null);
 
   if (status === 'loading') {
     return (
       <AuthCard title="Reset your password">
-        <p role="status" className="text-sm text-gray-600">
+        <p role="status" className="text-sm text-fg-secondary">
           Checking your reset link…
         </p>
       </AuthCard>
@@ -32,7 +35,11 @@ export function ResetPasswordPage() {
       <AuthCard title="Link expired">
         <FormAlert tone="error">This reset link is invalid or has expired.</FormAlert>
         <p className="mt-4 text-center text-sm">
-          <Link to="/forgot-password" className="font-medium text-brand-700 hover:underline">
+          <Link
+            to="/forgot-password"
+            viewTransition
+            className="font-medium text-accent-fg hover:underline"
+          >
             Request a new link
           </Link>
         </p>
@@ -45,16 +52,19 @@ export function ResetPasswordPage() {
     setBusy(true);
     setError(null);
     const result = await client.updateUser({ password });
-    setBusy(false);
     if (result.error) {
+      setBusy(false);
       setError(passwordUpdateErrorMessage(result.error));
+      nudge(passwordInput.current);
       return;
     }
+    setLeaving(true);
+    await afterMotion(150);
     await navigate('/', { replace: true });
   }
 
   return (
-    <AuthCard title="Choose a new password">
+    <AuthCard title="Choose a new password" leaving={leaving}>
       <form
         onSubmit={(event) => {
           void handleSubmit(event);
@@ -65,6 +75,7 @@ export function ResetPasswordPage() {
         <TextField
           label="New password"
           type="password"
+          ref={passwordInput}
           autoComplete="new-password"
           required
           minLength={PASSWORD_MIN_LENGTH}
