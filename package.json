@@ -13,7 +13,7 @@
     "dev": "npm run build -w @documind/shared && concurrently -k -n shared,api,web -c gray,blue,magenta \"npm run dev -w @documind/shared\" \"npm run dev -w @documind/api\" \"npm run dev -w @documind/web\"",
     "build": "npm run build -w @documind/shared && npm run build -w @documind/api && npm run build -w @documind/web",
     "typecheck": "npm run build -w @documind/shared && npm run typecheck --workspaces --if-present",
-    "lint": "eslint .",
+    "lint": "npm run build -w @documind/shared && eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "npm run build -w @documind/shared && npm run test --workspaces --if-present",
