@@ -16,3 +16,8 @@ npm-debug.log*
 
 # Local object storage (STORAGE_DRIVER=filesystem)
 .data/
+
+# Local agent skills (installed per machine, not project code)
+.agents/
+.claude/
+skills-lock.json
