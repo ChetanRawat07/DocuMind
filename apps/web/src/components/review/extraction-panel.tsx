@@ -19,6 +19,7 @@ import { useApi } from '../../services/use-api';
 import { invalidateDocumentData, useApiQuery } from '../../services/use-api-query';
 import { INPUT_CLASS } from '../form-controls';
 import { Button } from '../ui/button';
+import { SEGMENTED_GROUP, segmentClasses } from '../ui/button-styles';
 import { EmptyState, ErrorState, Skeleton, SkeletonRows } from '../ui/feedback';
 import { type FieldAction, FieldRow } from './field-row';
 
@@ -272,6 +273,7 @@ function LoadedExtraction({
   const result = useApiQuery(path, documentExtractionSchema);
   // A saved field returns the whole extraction; it replaces the loaded one until the next load.
   const [saved, setSaved] = useState<DocumentExtractionDto | null>(null);
+  const [showJson, setShowJson] = useState(false);
 
   const load = useDelayedLoading(result.status === 'loading');
 
@@ -355,27 +357,51 @@ function LoadedExtraction({
             <span className="text-warning-fg"> (type uncertain)</span>
           ) : null}
         </p>
-        <div
-          className="flex items-center gap-2"
-          title="The lowest score of any value: a review signal, not a probability."
-        >
-          <p className="text-compact font-medium text-fg tabular-nums">
-            Confidence {formatPercent(extraction.overallConfidence)}
-          </p>
-          <span
-            aria-hidden="true"
-            className="h-1.5 w-16 overflow-hidden rounded-full bg-surface-muted"
+        <div className="flex items-center gap-3">
+          <div
+            className="flex items-center gap-2"
+            title="The lowest score of any value: a review signal, not a probability."
           >
+            <p className="text-compact font-medium text-fg tabular-nums">
+              Confidence {formatPercent(extraction.overallConfidence)}
+            </p>
             <span
-              className={cx(
-                'block h-full rounded-full',
-                extraction.overallConfidence < REVIEW_CONFIDENCE_THRESHOLD
-                  ? 'bg-warning-fg'
-                  : 'bg-success-fg',
-              )}
-              style={{ width: `${String(Math.round(extraction.overallConfidence * 100))}%` }}
-            />
-          </span>
+              aria-hidden="true"
+              className="h-1.5 w-16 overflow-hidden rounded-full bg-surface-muted"
+            >
+              <span
+                className={cx(
+                  'block h-full rounded-full',
+                  extraction.overallConfidence < REVIEW_CONFIDENCE_THRESHOLD
+                    ? 'bg-warning-fg'
+                    : 'bg-success-fg',
+                )}
+                style={{ width: `${String(Math.round(extraction.overallConfidence * 100))}%` }}
+              />
+            </span>
+          </div>
+          <div className={SEGMENTED_GROUP} role="group" aria-label="Show extracted data as">
+            <button
+              type="button"
+              aria-pressed={!showJson}
+              className={segmentClasses(!showJson)}
+              onClick={() => {
+                setShowJson(false);
+              }}
+            >
+              Fields
+            </button>
+            <button
+              type="button"
+              aria-pressed={showJson}
+              className={segmentClasses(showJson)}
+              onClick={() => {
+                setShowJson(true);
+              }}
+            >
+              JSON
+            </button>
+          </div>
         </div>
       </div>
       <DecisionNote extraction={extraction} />
@@ -395,21 +421,32 @@ function LoadedExtraction({
           {ISSUE_LABEL[issue.code]}
         </p>
       ))}
-      <ul
-        className="divide-y divide-line-subtle"
-        aria-label="Extracted fields"
-        onKeyDown={editable ? handleFieldKeys : undefined}
-      >
-        {extraction.fields.map((field) => (
-          <FieldRow
-            key={field.name}
-            field={field}
-            currency={typeof currency === 'string' ? currency : null}
-            editable={editable}
-            onReview={reviewField}
-          />
-        ))}
-      </ul>
+      {showJson ? (
+        // The extraction exactly as the API returns it, corrections included.
+        <pre
+          tabIndex={0}
+          aria-label="Extracted data as JSON"
+          className="max-h-[60vh] overflow-auto bg-surface-subtle px-4 py-3 font-mono text-xs leading-relaxed text-fg sm:px-6"
+        >
+          {JSON.stringify(extraction, null, 2)}
+        </pre>
+      ) : (
+        <ul
+          className="divide-y divide-line-subtle"
+          aria-label="Extracted fields"
+          onKeyDown={editable ? handleFieldKeys : undefined}
+        >
+          {extraction.fields.map((field) => (
+            <FieldRow
+              key={field.name}
+              field={field}
+              currency={typeof currency === 'string' ? currency : null}
+              editable={editable}
+              onReview={reviewField}
+            />
+          ))}
+        </ul>
+      )}
       {editable ? (
         <DecisionBar
           flagged={extraction.fields.filter((field) => field.needsReview).length}

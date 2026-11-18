@@ -146,6 +146,22 @@ describe('ExtractionPanel', () => {
     expect(screen.getByText('Confidence 30%')).toBeInTheDocument();
   });
 
+  it('previews the extraction as JSON, and switches back to the fields', async () => {
+    await renderReview();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: 'JSON' }));
+
+    const json = screen.getByLabelText('Extracted data as JSON');
+    expect(JSON.parse(json.textContent ?? '')).toEqual(extraction());
+    expect(screen.queryByRole('list', { name: 'Extracted fields' })).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Fields' }));
+
+    expect(screen.getByRole('list', { name: 'Extracted fields' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Extracted data as JSON')).toBeNull();
+  });
+
   it('keeps Approve disabled until every flagged field is checked', async () => {
     const { requests } = await renderReview();
     const user = userEvent.setup();

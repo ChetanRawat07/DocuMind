@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- The BrandMark tile. The D is a path: a favicon cannot load the app's font. -->
+  <rect width="32" height="32" rx="8" fill="#3158d8"/>
+  <path fill="#fff" fill-rule="evenodd" d="M9.5 7.5h6.75c5.4 0 8.75 3.3 8.75 8.5s-3.35 8.5-8.75 8.5H9.5zm4.25 3.6v9.8h2.3c2.85 0 4.6-1.8 4.6-4.9s-1.75-4.9-4.6-4.9z"/>
+</svg>
