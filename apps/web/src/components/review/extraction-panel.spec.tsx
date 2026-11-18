@@ -153,7 +153,7 @@ describe('ExtractionPanel', () => {
     await user.click(screen.getByRole('button', { name: 'JSON' }));
 
     const json = screen.getByLabelText('Extracted data as JSON');
-    expect(JSON.parse(json.textContent ?? '')).toEqual(extraction());
+    expect(JSON.parse(json.textContent)).toEqual(extraction());
     expect(screen.queryByRole('list', { name: 'Extracted fields' })).toBeNull();
 
     await user.click(screen.getByRole('button', { name: 'Fields' }));
